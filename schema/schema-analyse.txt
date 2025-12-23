@@ -1,0 +1,67 @@
+
+================================================================================
+SCHEMA-ANALYSE FÜR VIEW: FHV (fhv_unified)
+================================================================================
+           Spaltenname Datentyp (BigQuery) Beschreibung  Ist Nullable
+  dispatching_base_num              STRING                       True
+       pickup_datetime            DATETIME                       True
+      dropOff_datetime            DATETIME                       True
+          PUlocationID             INTEGER                       True
+          DOlocationID             INTEGER                       True
+               SR_Flag              STRING                       True
+Affiliated_base_number              STRING                       True
+        duplicate_flag              STRING                       True
+          missing_flag              STRING                       True
+
+================================================================================
+SCHEMA-ANALYSE FÜR VIEW: GREEN (green_unified)
+================================================================================
+          Spaltenname Datentyp (BigQuery) Beschreibung  Ist Nullable
+             VendorID             INTEGER                       True
+ lpep_pickup_datetime            DATETIME                       True
+lpep_dropoff_datetime            DATETIME                       True
+   store_and_fwd_flag              STRING                       True
+           RatecodeID             INTEGER                       True
+         PULocationID             INTEGER                       True
+         DOLocationID             INTEGER                       True
+      passenger_count             INTEGER                       True
+        trip_distance               FLOAT                       True
+          fare_amount               FLOAT                       True
+                extra               FLOAT                       True
+              mta_tax               FLOAT                       True
+           tip_amount               FLOAT                       True
+         tolls_amount               FLOAT                       True
+            ehail_fee               FLOAT                       True
+improvement_surcharge               FLOAT                       True
+         total_amount               FLOAT                       True
+         payment_type             INTEGER                       True
+            trip_type             INTEGER                       True
+ congestion_surcharge               FLOAT                       True
+       duplicate_flag              STRING                       True
+         missing_flag              STRING                       True
+
+================================================================================
+SCHEMA-ANALYSE FÜR VIEW: YELLOW (yellow_unified)
+================================================================================
+          Spaltenname Datentyp (BigQuery) Beschreibung  Ist Nullable
+             VendorID             INTEGER                       True
+ tpep_pickup_datetime            DATETIME                       True
+tpep_dropoff_datetime            DATETIME                       True
+      passenger_count             INTEGER                       True
+        trip_distance               FLOAT                       True
+           RatecodeID             INTEGER                       True
+   store_and_fwd_flag              STRING                       True
+         PULocationID             INTEGER                       True
+         DOLocationID             INTEGER                       True
+         payment_type             INTEGER                       True
+          fare_amount               FLOAT                       True
+                extra               FLOAT                       True
+              mta_tax               FLOAT                       True
+           tip_amount               FLOAT                       True
+         tolls_amount               FLOAT                       True
+improvement_surcharge               FLOAT                       True
+         total_amount               FLOAT                       True
+ congestion_surcharge               FLOAT                       True
+          Airport_fee               FLOAT                       True
+       duplicate_flag              STRING                       True
+         missing_flag              STRING                       True

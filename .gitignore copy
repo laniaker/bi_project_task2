@@ -1,0 +1,42 @@
+# Environment Variables (Secrets!)
+.env
+
+# Virtual Environment
+bi.venv/
+.venv
+env/
+*.pyc
+__pycache__/
+
+# Daten (zu groß für Git)
+data/raw/
+data/staging/
+data/canonical/
+*.parquet
+*.csv
+
+# Logs
+logs/
+*.log
+
+# Jupyter Notebook Checkpoints
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
+
+# Database files (falls SQLite)
+*.db
+*.sqlite
+
+# PyCharm / VSCode
+.idea/
+.vscode/
+
+venv/
+*.py[cod]
+.ipynb_checkpoints/
+
+notebooks/fhv_taxi_sample.csv
+notebooks/green_taxi_sample.csv
+notebooks/yellow_taxi_sample.csv
