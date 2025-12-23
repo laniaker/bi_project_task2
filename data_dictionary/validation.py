@@ -1,5 +1,5 @@
 from datetime import datetime
-
+#wichtig eig zu vermerken wo der fehler auftritt welcxhe schema und zeilke 
 def validate_yellow_trip(data):
     """
     Validiert Yellow Taxi Trip Records basierend auf den bereitgestellten Spaltennamen.
