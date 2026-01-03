@@ -1,0 +1,286 @@
+:root{
+  /* Grundfarben */
+  --bg: #f3f5f9;
+  --card: #ffffff;
+  --text: #0f172a;
+  --muted: #64748b;
+  --border: #e2e8f0;
+
+  /* Primärfarbe + weiche Variante (z. B. für Hover/Highlights) */
+  --primary: #2563eb;
+  --primary-soft: rgba(37,99,235,0.10);
+
+  /* Statusfarben (KPI/Alerts) */
+  --success: #16a34a;
+  --success-soft: rgba(22,163,74,0.12);
+
+  --warn: #f59e0b;
+  --warn-soft: rgba(245,158,11,0.14);
+
+  --danger: #ef4444;
+  --danger-soft: rgba(239,68,68,0.12);
+
+  /* UI-Basics */
+  --shadow: 0 10px 30px rgba(2,6,23,0.08);
+  --radius: 16px;
+
+  /* Einheitlicher Abstand zwischen Cards/Grids */
+  --gap: 14px;
+}
+
+/* -----------------------------
+   Global Reset / Base Styles
+------------------------------ */
+html, body {
+  margin:0;
+  padding:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+
+/* Einheitliches Box-Model für konsistentes Layout */
+*{ box-sizing: border-box; }
+
+/* -----------------------------
+   Layout: Seite / Container / Header
+------------------------------ */
+.container {
+  /* Max-Breite für große Screens, zentriert */
+  max-width: 1380px;
+  margin: 0 auto;
+  padding: 18px;
+}
+
+.header{
+  /* Titel links + ggf. Controls rechts */
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-end;
+  gap:12px;
+  margin-bottom: 14px;
+}
+
+.title h1 {
+  margin:0;
+  font-size: 22px;
+  letter-spacing: -0.2px;
+}
+
+.title p {
+  margin:4px 0 0 0;
+  color:var(--muted);
+}
+
+/* -----------------------------
+   Card-Design (Basis für alle Boxen)
+------------------------------ */
+.card{
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 12px;
+
+  /* verhindert, dass Charts aus der Card "rauslaufen" */
+  overflow: hidden;
+}
+
+.section-title{
+  /* kleine, einheitliche Überschrift für Sektionen */
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin: 0 0 10px 0;
+}
+
+/* -----------------------------
+   KPI-Zeile: 4 gleich breite Spalten
+------------------------------ */
+.kpis{
+  display:grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--gap);
+  margin-bottom: 14px;
+}
+
+.kpi{
+  /* einzelne KPI-Card */
+  padding: 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: var(--shadow);
+  position: relative;
+  overflow: hidden;
+}
+
+/* farbiger Indikator links (Default: primary) */
+.kpi::before{
+  content:"";
+  position:absolute;
+  left:0;
+  top:0;
+  bottom:0;
+  width: 6px;
+  background: var(--primary);
+}
+
+/* Statusvarianten */
+.kpi.success::before{ background: var(--success); }
+.kpi.warn::before{ background: var(--warn); }
+.kpi.danger::before{ background: var(--danger); }
+
+.kpi-title{
+  margin:0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.kpi-value{
+  margin: 6px 0 0 0;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.kpi-sub{
+  margin: 6px 0 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* -----------------------------
+   Hauptlayout: Sidebar + Main (4-Spalten-Raster)
+------------------------------ */
+.shell{
+  display:grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--gap);
+  align-items: start;
+}
+
+/* Sidebar belegt genau 1/4 */
+.sidebar{
+  grid-column: 1 / span 1;
+  width: 100%;
+
+  /* wichtig für Dropdown-Menüs (Stacking-Kontext) */
+  position: relative;
+  z-index: 20;
+}
+
+/* Main belegt genau 3/4 */
+.main{
+  grid-column: 2 / span 3;
+  width: 100%;
+
+  /* verhindert Layout-Brüche bei sehr breiten Inhalten (z. B. Plotly) */
+  min-width: 0;
+
+  /* Sidebar soll im Zweifel darüber liegen (Dropdowns) */
+  position: relative;
+  z-index: 1;
+}
+
+/* Sidebar-Cards: Dropdowns dürfen aus der Card herausklappen */
+.sidebar .card{
+  width: 100%;
+  margin-bottom: var(--gap);
+  overflow: visible;
+}
+
+/* -----------------------------
+   Filter-Bereich (Sidebar)
+------------------------------ */
+.filters{
+  display:grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.filter-label{
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+/* -----------------------------
+   Dash dcc.Dropdown: Menü immer im Vordergrund
+   -> Fix für react-select Dropdowns, die sonst "hinter" anderen Cards landen
+------------------------------ */
+.Select-menu-outer{
+  z-index: 9999 !important;
+}
+
+/* je nach Dash-Version werden zusätzliche Klassen genutzt */
+.VirtualizedSelectOption{
+  z-index: 9999 !important;
+}
+
+/* -----------------------------
+   Charts: Grid im Main (2 Spalten)
+------------------------------ */
+.grid-main{
+  display:grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.card-head h3{
+  margin:0;
+  font-size: 14px;
+}
+
+.card-head p{
+  margin:4px 0 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* -----------------------------
+   Tabellen (leichter, neutraler Stil)
+------------------------------ */
+.table-lite{
+  width:100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.table-lite th,
+.table-lite td{
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.table-lite th{
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* -----------------------------
+   Responsive: unter 1200px auf 1 Spalte umstellen
+------------------------------ */
+@media (max-width: 1200px){
+  /* KPIs von 4 -> 2 Spalten */
+  .kpis{ grid-template-columns: 1fr 1fr; }
+
+  /* Shell von Sidebar/Main -> untereinander */
+  .shell{ grid-template-columns: 1fr; }
+  .sidebar{ grid-column: auto; z-index: auto; position: static; }
+  .main{ grid-column: auto; min-width: auto; z-index: auto; }
+
+  /* Charts von 2 -> 1 Spalte */
+  .grid-main{ grid-template-columns: 1fr; }
+}
+
+/* -----------------------------
+   Plotly-Resize-Fix:
+   verhindert, dass Charts mit jedem Re-Render "wachsen"
+------------------------------ */
+.card .js-plotly-plot,
+.card .plot-container,
+.card svg {
+  height: 320px !important;
+}
