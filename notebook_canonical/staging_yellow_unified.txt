@@ -1,0 +1,208 @@
+CREATE OR REPLACE TABLE `taxi-bi-project.staging.yellow_staging_unified`
+PARTITION BY DATE(tpep_pickup_datetime)
+CLUSTER BY PULocationID
+AS
+-- Schema 1
+SELECT
+    CAST(VendorID AS INT64) AS VendorID,
+    CAST(tpep_pickup_datetime AS TIMESTAMP) AS tpep_pickup_datetime,
+    CAST(tpep_dropoff_datetime AS TIMESTAMP) AS tpep_dropoff_datetime,
+    CAST(passenger_count AS INT64) AS passenger_count,
+    trip_distance,
+    CAST(RatecodeID AS INT64) AS RatecodeID,
+    store_and_fwd_flag,
+    CAST(PULocationID AS INT64) AS PULocationID,
+    CAST(DOLocationID AS INT64) AS DOLocationID,
+    -- Neue Koordinaten-Spalten (hier NULL, da IDs vorhanden)
+    CAST(NULL AS FLOAT64) AS pickup_longitude,
+    CAST(NULL AS FLOAT64) AS pickup_latitude,
+    CAST(NULL AS FLOAT64) AS dropoff_longitude,
+    CAST(NULL AS FLOAT64) AS dropoff_latitude,
+    CAST(payment_type AS INT64) AS payment_type,
+    fare_amount,
+    extra,
+    mta_tax,
+    tip_amount,
+    tolls_amount,
+    improvement_surcharge,
+    total_amount,
+    CAST(congestion_surcharge AS FLOAT64) AS congestion_surcharge,
+    CAST(Airport_fee AS FLOAT64) AS Airport_fee,
+    duplicate_flag,
+    missing_flag
+FROM `taxi-bi-project.staging.yellow_schema_1`
+UNION ALL
+-- Schema 2
+SELECT
+    CAST(VendorID AS INT64) AS VendorID,
+    CAST(tpep_pickup_datetime AS TIMESTAMP) AS tpep_pickup_datetime,
+    CAST(tpep_dropoff_datetime AS TIMESTAMP) AS tpep_dropoff_datetime,
+    CAST(passenger_count AS INT64) AS passenger_count,
+    trip_distance,
+    CAST(RatecodeID AS INT64) AS RatecodeID,
+    store_and_fwd_flag,
+    CAST(PULocationID AS INT64) AS PULocationID,
+    CAST(DOLocationID AS INT64) AS DOLocationID,
+    CAST(NULL AS FLOAT64) AS pickup_longitude,
+    CAST(NULL AS FLOAT64) AS pickup_latitude,
+    CAST(NULL AS FLOAT64) AS dropoff_longitude,
+    CAST(NULL AS FLOAT64) AS dropoff_latitude,
+    CAST(payment_type AS INT64) AS payment_type,
+    fare_amount,
+    extra,
+    mta_tax,
+    tip_amount,
+    tolls_amount,
+    improvement_surcharge,
+    total_amount,
+    CAST(congestion_surcharge AS FLOAT64) AS congestion_surcharge,
+    CAST(airport_fee AS FLOAT64) AS Airport_fee,
+    duplicate_flag,
+    missing_flag
+FROM `taxi-bi-project.staging.yellow_schema_2`
+UNION ALL
+-- Schema 3
+SELECT
+    CAST(VendorID AS INT64) AS VendorID,
+    CAST(tpep_pickup_datetime AS TIMESTAMP) AS tpep_pickup_datetime,
+    CAST(tpep_dropoff_datetime AS TIMESTAMP) AS tpep_dropoff_datetime,
+    CAST(passenger_count AS INT64) AS passenger_count,
+    trip_distance,
+    CAST(RatecodeID AS INT64) AS RatecodeID,
+    store_and_fwd_flag,
+    CAST(PULocationID AS INT64) AS PULocationID,
+    CAST(DOLocationID AS INT64) AS DOLocationID,
+    CAST(NULL AS FLOAT64) AS pickup_longitude,
+    CAST(NULL AS FLOAT64) AS pickup_latitude,
+    CAST(NULL AS FLOAT64) AS dropoff_longitude,
+    CAST(NULL AS FLOAT64) AS dropoff_latitude,
+    CAST(payment_type AS INT64) AS payment_type,
+    fare_amount,
+    extra,
+    mta_tax,
+    tip_amount,
+    tolls_amount,
+    improvement_surcharge,
+    total_amount,
+    CAST(congestion_surcharge AS FLOAT64) AS congestion_surcharge,
+    CAST(airport_fee AS FLOAT64) AS Airport_fee, 
+    duplicate_flag,
+    missing_flag
+FROM `taxi-bi-project.staging.yellow_schema_3`
+UNION ALL
+-- Schema 4
+SELECT
+    CAST(VendorID AS INT64) AS VendorID, 
+    CAST(tpep_pickup_datetime AS TIMESTAMP) AS tpep_pickup_datetime,
+    CAST(tpep_dropoff_datetime AS TIMESTAMP) AS tpep_dropoff_datetime,
+    CAST(passenger_count AS INT64) AS passenger_count,
+    trip_distance,
+    CAST(RatecodeID AS INT64) AS RatecodeID,
+    store_and_fwd_flag,
+    CAST(PULocationID AS INT64) AS PULocationID,
+    CAST(DOLocationID AS INT64) AS DOLocationID,
+    CAST(NULL AS FLOAT64) AS pickup_longitude,
+    CAST(NULL AS FLOAT64) AS pickup_latitude,
+    CAST(NULL AS FLOAT64) AS dropoff_longitude,
+    CAST(NULL AS FLOAT64) AS dropoff_latitude,
+    CAST(payment_type AS INT64) AS payment_type,
+    fare_amount,
+    extra,
+    mta_tax,
+    tip_amount,
+    tolls_amount,
+    improvement_surcharge,
+    total_amount,
+    CAST(congestion_surcharge AS FLOAT64) AS congestion_surcharge,
+    CAST(airport_fee AS FLOAT64) AS Airport_fee,
+    duplicate_flag,
+    missing_flag
+FROM `taxi-bi-project.staging.yellow_schema_4`
+UNION ALL
+-- Schema 5 (Das ist der wichtige Teil: Hier werden die Koordinaten übernommen!)
+SELECT
+    SAFE_CAST(vendor_id AS INT64) AS VendorID,
+    CAST(pickup_datetime AS TIMESTAMP) AS tpep_pickup_datetime,
+    CAST(dropoff_datetime AS TIMESTAMP) AS tpep_dropoff_datetime,
+    CAST(passenger_count AS INT64) AS passenger_count,
+    trip_distance,
+    SAFE_CAST(rate_code AS INT64) AS RatecodeID,
+    store_and_fwd_flag,
+    CAST(NULL AS INT64) AS PULocationID, -- Keine IDs in 2010
+    CAST(NULL AS INT64) AS DOLocationID, -- Keine IDs in 2010
+    -- Hier übernehmen wir die echten Werte:
+    CAST(pickup_longitude AS FLOAT64) AS pickup_longitude,
+    CAST(pickup_latitude AS FLOAT64) AS pickup_latitude,
+    CAST(dropoff_longitude AS FLOAT64) AS dropoff_longitude,
+    CAST(dropoff_latitude AS FLOAT64) AS dropoff_latitude,
+    SAFE_CAST(payment_type AS INT64) AS payment_type,
+    fare_amount,
+    surcharge AS extra,
+    mta_tax,
+    tip_amount,
+    tolls_amount,
+    CAST(NULL AS FLOAT64) AS improvement_surcharge,
+    total_amount,
+    CAST(NULL AS FLOAT64) AS congestion_surcharge,
+    CAST(NULL AS FLOAT64) AS Airport_fee,
+    duplicate_flag,
+    missing_flag
+FROM `taxi-bi-project.staging.yellow_schema_5`
+UNION ALL
+-- Schema 6
+SELECT
+    CAST(VendorID AS INT64) AS VendorID,
+    CAST(tpep_pickup_datetime AS TIMESTAMP) AS tpep_pickup_datetime,
+    CAST(tpep_dropoff_datetime AS TIMESTAMP) AS tpep_dropoff_datetime,
+    CAST(passenger_count AS INT64) AS passenger_count,
+    trip_distance,
+    CAST(RatecodeID AS INT64) AS RatecodeID,
+    store_and_fwd_flag,
+    CAST(PULocationID AS INT64) AS PULocationID,
+    CAST(DOLocationID AS INT64) AS DOLocationID,
+    CAST(NULL AS FLOAT64) AS pickup_longitude,
+    CAST(NULL AS FLOAT64) AS pickup_latitude,
+    CAST(NULL AS FLOAT64) AS dropoff_longitude,
+    CAST(NULL AS FLOAT64) AS dropoff_latitude,
+    CAST(payment_type AS INT64) AS payment_type,
+    fare_amount,
+    extra,
+    mta_tax,
+    tip_amount,
+    tolls_amount,
+    improvement_surcharge,
+    total_amount,
+    CAST(congestion_surcharge AS FLOAT64) AS congestion_surcharge,
+    CAST(airport_fee AS FLOAT64) AS Airport_fee,
+    duplicate_flag,
+    missing_flag
+FROM `taxi-bi-project.staging.yellow_schema_6`
+UNION ALL
+-- Schema 7
+SELECT
+    CAST(VendorID AS INT64) AS VendorID,
+    CAST(tpep_pickup_datetime AS TIMESTAMP) AS tpep_pickup_datetime,
+    CAST(tpep_dropoff_datetime AS TIMESTAMP) AS tpep_dropoff_datetime,
+    CAST(passenger_count AS INT64) AS passenger_count,
+    trip_distance,
+    CAST(RatecodeID AS INT64) AS RatecodeID,
+    store_and_fwd_flag,
+    CAST(PULocationID AS INT64) AS PULocationID,
+    CAST(DOLocationID AS INT64) AS DOLocationID,
+    CAST(NULL AS FLOAT64) AS pickup_longitude,
+    CAST(NULL AS FLOAT64) AS pickup_latitude,
+    CAST(NULL AS FLOAT64) AS dropoff_longitude,
+    CAST(NULL AS FLOAT64) AS dropoff_latitude,
+    CAST(payment_type AS INT64) AS payment_type,
+    fare_amount,
+    extra,
+    mta_tax,
+    tip_amount,
+    tolls_amount,
+    improvement_surcharge,
+    total_amount,
+    CAST(congestion_surcharge AS FLOAT64) AS congestion_surcharge,
+    CAST(Airport_fee AS FLOAT64) AS Airport_fee,
+    duplicate_flag,
+    missing_flag
+FROM `taxi-bi-project.staging.yellow_schema_7`;
