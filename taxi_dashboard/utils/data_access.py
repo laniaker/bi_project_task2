@@ -9,19 +9,18 @@ except Exception as e:
     print(f"Warnung: BigQuery Client konnte nicht initialisiert werden: {e}")
     bq_client = None
 
-    
-# Diese Funktionen sind bewusst als "Interface" gedacht.
-# Später Dummy-Daten ersetzen
+# --- KONFIGURATION DER TABELLEN ---
+# Wir definieren die Pfade zentral, damit man sie leicht ändern kann
+TABLE_FACT = "taxi-bi-project.dimensional.Fact_Trips"
+TABLE_DIM_LOC = "taxi-bi-project.dimensional.dim_location"
+# NEU: Die Aggregationstabelle
+TABLE_AGG_PEAK = "taxi-bi-project.aggregational.agg_peak_hours"
+
 
 def get_filter_options():
     """
-    Lädt dynamisch die verfügbaren Filter-Optionen aus BigQuery:
-    1. Jahre (aus Fact_Trips)
-    2. Boroughs (aus dim_location)
-    3. Taxi Types (aus Fact_Trips source_system)
+    Lädt dynamisch die verfügbaren Filter-Optionen.
     """
-    
-    # Fallback-Werte, falls DB nicht erreichbar
     default_years = [2019, 2020, 2021, 2022, 2023]
     default_boroughs = ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island"]
     default_types = ["YELLOW", "GREEN", "FHV"]
@@ -29,187 +28,275 @@ def get_filter_options():
     if not bq_client:
         return default_years, default_boroughs, default_types
 
-    # Tabellennamen
-    fact_table = "taxi-bi-project.dimensional.Fact_Trips"
-    dim_location = "taxi-bi-project.dimensional.dim_location"
-
     try:
-        # 1. Jahre abfragen
-        # Wir sortieren absteigend, damit das aktuellste Jahr oben steht
+        # 1. Jahre holen
         sql_years = f"""
             SELECT DISTINCT EXTRACT(YEAR FROM pickup_datetime) as year 
-            FROM `{fact_table}` 
+            FROM `{TABLE_FACT}` 
             WHERE pickup_datetime IS NOT NULL
             ORDER BY year DESC
         """
-        df_years = bq_client.query(sql_years).to_dataframe()
-        years = df_years['year'].dropna().astype(int).tolist()
+        years = bq_client.query(sql_years).to_dataframe()['year'].dropna().astype(int).tolist()
 
-        # 2. Boroughs abfragen
-        # "Unknown" und "EWR" filtern wir oft raus, da sie analytisch meist stören, 
+        # 2. Boroughs holen
         sql_boroughs = f"""
             SELECT DISTINCT borough 
-            FROM `{dim_location}` 
-            WHERE borough IS NOT NULL AND borough != 'Unknown'
+            FROM `{TABLE_DIM_LOC}` 
+            WHERE borough IS NOT NULL AND borough != 'Unknown' AND borough != 'NV'
             ORDER BY borough
         """
-        df_boroughs = bq_client.query(sql_boroughs).to_dataframe()
-        boroughs = df_boroughs['borough'].tolist()
+        boroughs = bq_client.query(sql_boroughs).to_dataframe()['borough'].tolist()
 
-        # 3. Taxi Types abfragen
+        # 3. Taxi Types holen
         sql_types = f"""
             SELECT DISTINCT source_system 
-            FROM `{fact_table}` 
+            FROM `{TABLE_FACT}` 
             WHERE source_system IS NOT NULL
             ORDER BY source_system
         """
-        df_types = bq_client.query(sql_types).to_dataframe()
-        taxi_types = df_types['source_system'].tolist()
+        types = bq_client.query(sql_types).to_dataframe()['source_system'].tolist()
 
-        return years, boroughs, taxi_types
+        return years, boroughs, types
 
     except Exception as e:
-        print(f"Fehler beim Laden der Filter-Optionen: {e}")
-        # Im Fehlerfall Fallback zurückgeben
+        print(f"Fehler beim Laden der Filter: {e}")
         return default_years, default_boroughs, default_types
+
 
 def load_peak_hours(taxi_type="ALL", year=None, borough=None) -> pd.DataFrame:
     """
-    Lädt Peak Hours aus Fact_Trips.
-    UPDATE: Nutzt jetzt dim_datetime für Stunden und Jahre.
+    LÄDT DATEN FÜR DAS STUNDEN-HISTOGRAMM.
     
-    Filtert nach:
-    - Jahr (via dim_datetime.year)
-    - Borough (via JOIN mit dim_location)
-    - Taxi Typ (via source_system Spalte)
+    Quelle: taxi-bi-project.aggregational.agg_peak_hours
+    Vorteil: Extrem schnell, da vor-aggregiert.
     """
+    # Fallback, falls DB nicht da ist
     if not bq_client:
         return pd.DataFrame({"hour": list(range(24)), "trips": [0]*24})
 
-    # Tabellennamen definieren
-    fact_table = "taxi-bi-project.dimensional.Fact_Trips"
-    dim_location = "taxi-bi-project.dimensional.dim_location"
-    dim_datetime = "taxi-bi-project.dimensional.dim_datetime"
-
-    # Basis Query mit 2 JOINs (Location & Datetime)
+    # Basis-Query auf die Aggregationstabelle
+    # Wir summieren den 'trip_count', da die Tabelle ja Gruppen enthält (z.B. Yellow + Manhattan + 2023)
     query = f"""
         SELECT 
-            dt.hour as hour, 
-            COUNT(*) as trips 
-        FROM `{fact_table}` f
-        JOIN `{dim_location}` l
-          ON f.pickup_location_id = l.location_id
-        JOIN `{dim_datetime}` dt
-          ON TIMESTAMP_TRUNC(f.pickup_datetime, HOUR) = dt.datetime_key
+            hour, 
+            SUM(trip_count) as trips 
+        FROM `{TABLE_AGG_PEAK}`
     """
     
-    # Filterliste aufbauen
+    # Filter dynamisch aufbauen
     filters = ["1=1"] 
     
-    # 1. Jahr Filter 
     if year:
-        filters.append(f"dt.year = {year}")
+        filters.append(f"year = {year}")
     
-    # 2. Borough Filter
     if borough:
-        filters.append(f"l.borough = '{borough}'")
+        filters.append(f"borough = '{borough}'")
         
-    # 3. Taxi Type Filter
-    if taxi_type != "ALL":
-        filters.append(f"f.source_system = '{taxi_type}'")
+    if taxi_type and taxi_type != "ALL":
+        filters.append(f"taxi_type = '{taxi_type}'")
 
-    # WHERE Clause zusammenbauen
     where_clause = " AND ".join(filters)
     
-    # Finales SQL zusammensetzen
     final_sql = f"""
         {query}
         WHERE {where_clause}
-        GROUP BY 1
-        ORDER BY 1
+        GROUP BY hour
+        ORDER BY hour
     """
 
     try:
-        # Query ausführen
-        return bq_client.query(final_sql).to_dataframe()
+        df = bq_client.query(final_sql).to_dataframe()
+        
+        # WICHTIG: Lücken füllen!
+        # Wenn z.B. um 3 Uhr nachts gar keine Fahrt war, fehlt die Zeile im SQL-Ergebnis.
+        # Das Diagramm braucht aber zwingend 0-23 auf der x-Achse.
+        
+        # Wir setzen 'hour' als Index
+        if not df.empty:
+            df = df.set_index('hour')
+            
+            # Erstellen einen vollständigen Index von 0 bis 23
+            full_idx = range(24)
+            
+            # Reindex füllt fehlende Stunden mit 0 auf
+            df = df.reindex(full_idx, fill_value=0).reset_index()
+            
+            # Index heißt jetzt 'index', wir benennen ihn zurück in 'hour'
+            df.rename(columns={'index': 'hour'}, inplace=True)
+        else:
+            # Falls Filter gar keine Ergebnisse liefert -> Leeres Gerüst zurückgeben
+            return pd.DataFrame({"hour": list(range(24)), "trips": [0]*24})
+            
+        return df
+
     except Exception as e:
         print(f"Fehler bei load_peak_hours: {e}")
-        return pd.DataFrame({"hour": [], "trips": []})
+        # Leeres DataFrame zurückgeben, damit Dashboard nicht abstürzt
+        return pd.DataFrame({"hour": list(range(24)), "trips": [0]*24})
+
 
 def load_fares_by_borough(taxi_type="ALL", year=None) -> pd.DataFrame:
     """
-    Lädt die Preise (Total Amount) pro Borough für Boxplots.
-    Nutzt Sampling (RAND + LIMIT), um das Dashboard performant zu halten.
+    LÄDT BOXPLOT-STATISTIKEN FÜR PREISE PRO BOROUGH.
+    
+    Quelle: taxi-bi-project.aggregational.agg_fare_stats
+    
+    WICHTIG:
+    Wir nutzen IMMER eine Aggregation (GROUP BY borough).
+    Grund: Selbst wenn ein Jahr gewählt ist, gibt es oft mehrere Einträge pro Borough 
+    (z.B. Yellow vs. Green). Diese müssen wir zu einem einzigen Boxplot verschmelzen.
     """
     if not bq_client:
-        return pd.DataFrame({"borough": [], "fare_amount": []})
+        return pd.DataFrame()
 
-    fact_table = "taxi-bi-project.dimensional.Fact_Trips"
-    dim_location = "taxi-bi-project.dimensional.dim_location"
-
-    # Basis Query
-    query = f"""
-        SELECT 
-            l.borough,
-            f.total_amount as fare_amount
-        FROM `{fact_table}` f
-        JOIN `{dim_location}` l
-          ON f.pickup_location_id = l.location_id
-    """
-
-    # Filter aufbauen
+    TABLE_AGG_FARES = "taxi-bi-project.aggregational.agg_fare_stats"
+    
+    # 1. Filter bauen
     filters = ["1=1"]
-
-    # 1. Jahr Filter
+    
     if year:
-        filters.append(f"EXTRACT(YEAR FROM f.pickup_datetime) = {year}")
-    
-    # 2. Taxi Typ Filter
-    if taxi_type != "ALL":
-        filters.append(f"f.source_system = '{taxi_type}'")
-
-    # 3. Datenbereinigung
-    filters.append("f.total_amount BETWEEN 0.1 AND 500")
-    filters.append("l.borough IS NOT NULL")
-    filters.append("l.borough != 'Unknown'")
-
+        filters.append(f"year = {year}")
+        
+    if taxi_type and taxi_type != "ALL":
+        filters.append(f"taxi_type = '{taxi_type}'")
+        
     where_clause = " AND ".join(filters)
-    
-    # Finales SQL mit Sampling
-    final_sql = f"""
-        {query}
+
+    # 2. Query bauen (Einheitliche Logik für ALLE Fälle)
+    # Wir berechnen den gewichteten Durchschnitt der Quantile basierend auf 'trip_count'.
+    sql = f"""
+        SELECT 
+            borough,
+            SAFE_DIVIDE(SUM(min_fare * trip_count), SUM(trip_count)) as min_fare,
+            SAFE_DIVIDE(SUM(q1_fare * trip_count), SUM(trip_count)) as q1_fare,
+            SAFE_DIVIDE(SUM(median_fare * trip_count), SUM(trip_count)) as median_fare,
+            SAFE_DIVIDE(SUM(q3_fare * trip_count), SUM(trip_count)) as q3_fare,
+            SAFE_DIVIDE(SUM(max_fare * trip_count), SUM(trip_count)) as max_fare
+        FROM `{TABLE_AGG_FARES}`
         WHERE {where_clause}
-        ORDER BY RAND()
-        LIMIT 5000
+        GROUP BY borough
+        ORDER BY median_fare DESC
     """
 
     try:
-        return bq_client.query(final_sql).to_dataframe()
+        return bq_client.query(sql).to_dataframe()
     except Exception as e:
         print(f"Fehler bei load_fares_by_borough: {e}")
-        return pd.DataFrame({"borough": [], "fare_amount": []})
+        return pd.DataFrame()
 
 def load_tip_percentage(taxi_type="ALL", year=None, borough=None) -> pd.DataFrame:
-    # Erwartete Spalten: bucket (z.B. year oder borough), avg_tip_pct
-    return pd.DataFrame({"bucket": [], "avg_tip_pct": []})
+    """
+    LÄDT DURCHSCHNITTLICHES TRINKGELD (%).
+    
+    Quelle: taxi-bi-project.aggregational.agg_tip_stats
+    Basis: Nur Kartenzahlungen (wurde bereits bei Tabellenerstellung gefiltert).
+    
+    Logik:
+    Wir berechnen den gewichteten Durchschnitt:
+    (Summe aller Tips) / (Summe aller Fahrpreise) * 100
+    
+    Dynamische Gruppierung:
+    - Wenn ein Borough gewählt ist, zeigen wir den Vergleich über Jahre.
+    - Wenn kein Borough gewählt ist, vergleichen wir die Boroughs miteinander.
+    """
+    if not bq_client:
+        return pd.DataFrame()
+
+    TABLE_AGG_TIPS = "taxi-bi-project.aggregational.agg_tip_stats"
+    
+    # 1. Filter
+    filters = ["1=1"]
+    if taxi_type and taxi_type != "ALL":
+        filters.append(f"taxi_type = '{taxi_type}'")
+    if year:
+        filters.append(f"year = {year}")
+    if borough:
+        filters.append(f"borough = '{borough}'")
+        
+    where_clause = " AND ".join(filters)
+
+    # 2. Dynamische Gruppierung (x-Achse)
+    # Szenario A: Borough ist ausgewählt -> Wir zeigen den Zeitverlauf (Jahre)
+    if borough:
+        group_col = "year"
+        bucket_label = "year" # Label für den Plot
+        order_clause = "year"
+        
+    # Szenario B: Kein Borough gewählt -> Wir vergleichen die Boroughs
+    else:
+        group_col = "borough"
+        bucket_label = "borough"
+        order_clause = "avg_tip_pct DESC"
+
+    # 3. Query
+    sql = f"""
+        SELECT 
+            CAST({group_col} AS STRING) as bucket, -- String für saubere x-Achse
+            
+            -- Die Formel für den echten Durchschnitt:
+            SAFE_DIVIDE(SUM(total_tip), SUM(total_fare)) * 100 as avg_tip_pct
+            
+        FROM `{TABLE_AGG_TIPS}`
+        WHERE {where_clause}
+        GROUP BY 1
+        ORDER BY {order_clause}
+    """
+
+    try:
+        df = bq_client.query(sql).to_dataframe()
+        return df
+    except Exception as e:
+        print(f"Fehler bei load_tip_percentage: {e}")
+        return pd.DataFrame()
 
 def load_demand_over_years(taxi_type="ALL", borough=None) -> pd.DataFrame:
-    # Erwartete Spalten: year, trips (oder month)
-    return pd.DataFrame({"year": [], "trips": []})
+    """
+    LÄDT JAHRES-TRENDS (Nachfrageentwicklung).
+    
+    Quelle: taxi-bi-project.aggregational.agg_demand_years
+    Logik: Summiert die Fahrten pro Jahr basierend auf den gewählten Filtern.
+    """
+    if not bq_client:
+        return pd.DataFrame()
 
-# Creative
+    TABLE_AGG_DEMAND = "taxi-bi-project.aggregational.agg_demand_years"
+
+    filters = ["1=1"]
+    
+    # Taxi Filter
+    if taxi_type and taxi_type != "ALL":
+        filters.append(f"taxi_type = '{taxi_type}'")
+        
+    # Borough Filter
+    if borough:
+        filters.append(f"borough = '{borough}'")
+
+    where_clause = " AND ".join(filters)
+
+    sql = f"""
+        SELECT 
+            year,
+            SUM(total_trips) as trips
+        FROM `{TABLE_AGG_DEMAND}`
+        WHERE {where_clause}
+        GROUP BY year
+        ORDER BY year
+    """
+
+    try:
+        return bq_client.query(sql).to_dataframe()
+    except Exception as e:
+        print(f"Fehler bei load_demand_over_years: {e}")
+        return pd.DataFrame()
+
 def load_demand_heatmap(taxi_type="ALL", year=None, borough=None) -> pd.DataFrame:
-    # Erwartete Spalten: weekday (0-6 oder name), hour (0-23), trips
     return pd.DataFrame({"weekday": [], "hour": [], "trips": []})
 
 def load_scatter_fare_distance(taxi_type="ALL", year=None, borough=None) -> pd.DataFrame:
-    # Erwartete Spalten: trip_distance, fare_amount
     return pd.DataFrame({"trip_distance": [], "fare_amount": []})
 
 def load_flows(taxi_type="ALL", year=None) -> pd.DataFrame:
-    # Erwartete Spalten: pu_borough, do_borough, trips
     return pd.DataFrame({"pu_borough": [], "do_borough": [], "trips": []})
 
 def load_revenue_efficiency(taxi_type="ALL", year=None, borough=None) -> pd.DataFrame:
-    # Erwartete Spalten: bucket (borough oder year), rev_eff (fare/duration)
     return pd.DataFrame({"bucket": [], "rev_eff": []})
