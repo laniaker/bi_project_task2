@@ -2,15 +2,14 @@ from dash import Input, Output
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
+import numpy as np
 
 # Einheitliches Chart-Styling
 from utils.plot_style import apply_exec_style
 
 # Datenzugriff
 from utils.data_access import (
-    load_weekly_patterns,  # <--- Das ist die neue Funktion, die wir gebaut haben
-    # Die anderen Importe (load_scatter..., load_flows...) lassen wir weg, 
-    # bis wir die SQL-Tabellen dafür gebaut haben.
+    load_weekly_patterns, load_agg_fare_dist
 )
 
 def register_creative_callbacks(app):
@@ -71,23 +70,58 @@ def register_creative_callbacks(app):
         return fig
 
     # ---------------------------------------------------
-    # 2) Scatter: Fare vs Distance (PLATZHALTER)
+    # 2) Scatter: Fare vs Distance (Clean Bubble)
     # ---------------------------------------------------
     @app.callback(
         Output("fig-scatter-fare-distance", "figure"),
         Input("filter-taxi-type", "value"),
+        Input("filter-year", "value"),
+        Input("filter-borough", "value"),
     )
-    def fig_scatter(taxi_type):
-        # Platzhalter, bis wir Task 2c angehen
-        fig = go.Figure()
-        fig.update_layout(
-            title="Fare vs Distance (Coming Soon)",
-            xaxis={"visible": False}, 
-            yaxis={"visible": False}
-        )
-        apply_exec_style(fig)
-        return fig
+    def fig_scatter(taxi_type, year, borough):
+        if not taxi_type: taxi_type = "ALL"
+        
+        # 1. Daten laden
+        df = load_agg_fare_dist(taxi_type, year, borough)
+        
+        if df.empty:
+            fig = go.Figure()
+            fig.update_layout(title="Keine Daten")
+            apply_exec_style(fig)
+            return fig
 
+        # 2. Plotten als Bubble Chart
+        fig = px.scatter(
+            df, 
+            x="distance", 
+            y="fare", 
+            size="trips",
+            color="taxi_type",
+            opacity=0.8,
+            size_max=25,
+            color_discrete_map={
+                "YELLOW": "#f1c40f",
+                "GREEN": "#2ecc71",
+                "FHV": "#3498db",
+                "FHV - High Volume": "#3498db"
+            },
+            hover_data=["trips"]
+        )
+        
+        fig.update_traces(marker=dict(line=dict(width=0), sizemin=3))
+        
+        # 3. Styling
+        fig.update_layout(
+            xaxis_title="Distanz (Meilen)",
+            yaxis_title="Fahrpreis (USD)",
+            legend_title="Taxi Typ",
+            margin=dict(l=40, r=40, t=40, b=40)
+        )
+        
+        apply_exec_style(fig, title=f"Preisstruktur (Datenbasis: {len(df)} Cluster)")
+        
+        return fig
+    
     # ---------------------------------------------------
     # 3) Flows: Dominante Pickup → Dropoff (PLATZHALTER)
     # ---------------------------------------------------

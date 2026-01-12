@@ -325,8 +325,42 @@ def load_weekly_patterns(taxi_type="ALL", year=None, borough=None):
         print(f"Fehler in load_weekly_patterns: {e}")
         return pd.DataFrame()
 
-def load_scatter_fare_distance(taxi_type="ALL", year=None, borough=None) -> pd.DataFrame:
-    return pd.DataFrame({"trip_distance": [], "fare_amount": []})
+#def load_scatter_fare_distance(taxi_type="ALL", year=None, borough=None) -> pd.DataFrame:
+#    return pd.DataFrame({"trip_distance": [], "fare_amount": []})
+
+def load_agg_fare_dist(taxi_type="ALL", year=None, borough=None):
+    """
+    Lädt aggregierte Cluster-Daten für den Scatterplot.
+    """
+    if not bq_client: return pd.DataFrame()
+
+    TABLE = "taxi-bi-project.aggregational.agg_fare_dist"
+    
+    filters = ["1=1"]
+    if taxi_type and taxi_type != "ALL": filters.append(f"taxi_type = '{taxi_type}'")
+    if year: filters.append(f"year = {year}")
+    if borough: filters.append(f"borough = '{borough}'")
+    
+    where_clause = " AND ".join(filters)
+    
+    sql = f"""
+        SELECT 
+            dist_bin as distance,
+            fare_bin as fare,
+            taxi_type,
+            SUM(trip_count) as trips
+        FROM `{TABLE}`
+        WHERE {where_clause}
+        GROUP BY 1, 2, 3
+        HAVING trips > 10 
+    """
+    
+    try:
+        df = bq_client.query(sql).to_dataframe()
+        return df
+    except Exception as e:
+        print(f"Fehler in load_agg_fare_dist: {e}")
+        return pd.DataFrame()
 
 def load_flows(taxi_type="ALL", year=None) -> pd.DataFrame:
     return pd.DataFrame({"pu_borough": [], "do_borough": [], "trips": []})
