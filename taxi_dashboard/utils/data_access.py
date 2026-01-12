@@ -300,3 +300,105 @@ def load_flows(taxi_type="ALL", year=None) -> pd.DataFrame:
 
 def load_revenue_efficiency(taxi_type="ALL", year=None, borough=None) -> pd.DataFrame:
     return pd.DataFrame({"bucket": [], "rev_eff": []})
+
+def get_kpi_data(taxi_type="ALL", year=None, borough=None):
+    """
+    Holt NUR die 4 KPIs für die obere Leiste.
+    """
+    if not bq_client:
+        return 0, 0, 0, 0
+
+    TABLE_KPI = "taxi-bi-project.aggregational.agg_global_kpis"
+    
+    filters = ["1=1"]
+    if taxi_type and taxi_type != "ALL": filters.append(f"taxi_type = '{taxi_type}'")
+    if year: filters.append(f"year = {year}")
+    if borough: filters.append(f"borough = '{borough}'")
+    where_clause = " AND ".join(filters)
+    
+    sql = f"""
+        SELECT 
+            SUM(total_trips) as trips,
+            SUM(sum_total_amount) as revenue,
+            SUM(sum_tip_card) as tip_amt,
+            SUM(sum_fare_card) as fare_amt_card,
+            SUM(outlier_count) as outliers
+        FROM `{TABLE_KPI}`
+        WHERE {where_clause}
+    """
+    
+    try:
+        df = bq_client.query(sql).to_dataframe()
+        
+        if df.empty or pd.isna(df['trips'][0]) or df['trips'][0] == 0:
+            return 0, 0.0, 0.0, 0.0
+            
+        trips = df['trips'][0]
+        revenue = df['revenue'][0]
+        # Sicherstellen, dass wir nicht durch 0 teilen
+        avg_fare = revenue / trips
+        avg_tip_pct = (df['tip_amt'][0] / df['fare_amt_card'][0] * 100) if df['fare_amt_card'][0] > 0 else 0
+        outlier_share = (df['outliers'][0] / trips * 100)
+        
+        return trips, avg_fare, avg_tip_pct, outlier_share
+        
+    except Exception as e:
+        print(f"Fehler KPI: {e}")
+        return 0, 0.0, 0.0, 0.0
+    
+def get_top_boroughs(taxi_type="ALL", year=None):
+    """
+    Liefert die Top 5 Boroughs nach Anzahl Fahrten.
+    Quelle: agg_demand_years (sehr schnell).
+    """
+    if not bq_client: return []
+    
+    filters = ["1=1"]
+    if taxi_type and taxi_type != "ALL": filters.append(f"taxi_type = '{taxi_type}'")
+    if year: filters.append(f"year = {year}")
+    # Wichtig: Wir schließen 'Unknown' aus, das interessiert das Management meist nicht
+    filters.append("borough != 'Unknown'")
+    
+    where_clause = " AND ".join(filters)
+    
+    sql = f"""
+        SELECT borough as Borough, SUM(total_trips) as Trips
+        FROM `taxi-bi-project.aggregational.agg_demand_years`
+        WHERE {where_clause}
+        GROUP BY 1
+        ORDER BY 2 DESC
+        LIMIT 5
+    """
+    try:
+        return bq_client.query(sql).to_dataframe().to_dict('records')
+    except Exception as e:
+        print(f"Fehler Top Boroughs: {e}")
+        return []
+
+def get_top_hours(taxi_type="ALL", year=None, borough=None):
+    """
+    Liefert die Top 5 Stunden nach Anzahl Fahrten.
+    Quelle: agg_peak_hours.
+    """
+    if not bq_client: return []
+    
+    filters = ["1=1"]
+    if taxi_type and taxi_type != "ALL": filters.append(f"taxi_type = '{taxi_type}'")
+    if year: filters.append(f"year = {year}")
+    if borough: filters.append(f"borough = '{borough}'")
+    
+    where_clause = " AND ".join(filters)
+    
+    sql = f"""
+        SELECT hour as Hour, SUM(trip_count) as Trips
+        FROM `taxi-bi-project.aggregational.agg_peak_hours`
+        WHERE {where_clause}
+        GROUP BY 1
+        ORDER BY 2 DESC
+        LIMIT 5
+    """
+    try:
+        return bq_client.query(sql).to_dataframe().to_dict('records')
+    except Exception as e:
+        print(f"Fehler Top Hours: {e}")
+        return []
