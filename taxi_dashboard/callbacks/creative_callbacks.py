@@ -123,3 +123,74 @@ def register_creative_callbacks(app):
         )
         apply_exec_style(fig)
         return fig
+    
+    # ---------------------------------------------------
+    # 5) Weekly Patterns (Linearer Verlauf Mo -> So)
+    # ---------------------------------------------------
+    @app.callback(
+        Output("fig-weekly-patterns-creative", "figure"),
+        Input("filter-taxi-type", "value"),
+        Input("filter-year", "value"),
+        Input("filter-borough", "value"),
+    )
+    def fig_weekly_linear(taxi_type, year, borough):
+        if not taxi_type: taxi_type = "ALL"
+        
+        # 1. Daten laden
+        df = load_weekly_patterns(taxi_type, year, borough)
+        
+        if df.empty:
+            fig = go.Figure()
+            fig.update_layout(title="Keine Daten")
+            apply_exec_style(fig)
+            return fig
+
+        # 2. Sortierung erzwingen: Montag zuerst!
+        week_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        df["day_name"] = pd.Categorical(df["day_name"], categories=week_order, ordered=True)
+        df = df.sort_values(by=["day_name", "hour"])
+
+        # 3. Label bauen
+        df["time_label"] = df["day_name"].astype(str) + " " + df["hour"].astype(str).str.zfill(2) + ":00"
+
+        # Farb-Mapping
+        color_map = {
+            "YELLOW": "#f1c40f",
+            "GREEN": "#2ecc71",
+            "FHV": "#3498db",
+            "FHV - High Volume": "#3498db"
+        }
+
+        # Feste Reihenfolge für die Stapelung
+        taxi_stack_order = ["FHV", "FHV - High Volume", "GREEN", "YELLOW"]
+
+        # 4. Plotten
+        fig = px.bar(
+            df, 
+            x="time_label", 
+            y="trips", 
+            color="taxi_type", 
+            category_orders={
+                "time_label": df["time_label"].tolist(),
+                "taxi_type": taxi_stack_order
+            },
+            color_discrete_map=color_map
+        )
+        
+        # 5. Styling
+        fig.update_layout(
+            xaxis_title=None,
+            yaxis_title="Anzahl Fahrten",
+            legend_title=None,
+            xaxis=dict(
+                tickangle=-45,
+                nticks=20,
+                type="category"
+            ),
+            margin=dict(t=40, b=60, l=40, r=20),
+            bargap=0.0
+        )
+        
+        apply_exec_style(fig, title="Wochenverlauf (Start: Montag)")
+        
+        return fig
