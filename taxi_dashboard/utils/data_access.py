@@ -289,8 +289,41 @@ def load_demand_over_years(taxi_type="ALL", borough=None) -> pd.DataFrame:
         print(f"Fehler bei load_demand_over_years: {e}")
         return pd.DataFrame()
 
-def load_demand_heatmap(taxi_type="ALL", year=None, borough=None) -> pd.DataFrame:
-    return pd.DataFrame({"weekday": [], "hour": [], "trips": []})
+def load_weekly_patterns(taxi_type="ALL", year=None, borough=None):
+    """
+    Lädt Daten für Heatmap und Facet-Plots.
+    Nutzt jetzt direkt die Spalten aus der neuen SQL-Tabelle (inkl. Sortier-Nummer).
+    """
+    if not bq_client: return pd.DataFrame()
+
+    TABLE = "taxi-bi-project.aggregational.agg_weekly_patterns"
+    
+    filters = ["1=1"]
+    if taxi_type and taxi_type != "ALL": filters.append(f"taxi_type = '{taxi_type}'")
+    if year: filters.append(f"year = {year}")
+    if borough: filters.append(f"borough = '{borough}'")
+    
+    where_clause = " AND ".join(filters)
+    
+    sql = f"""
+        SELECT 
+            day_name,
+            day_of_week, 
+            hour,
+            taxi_type,
+            SUM(trip_count) as trips
+        FROM `{TABLE}`
+        WHERE {where_clause}
+        GROUP BY 1, 2, 3, 4
+        ORDER BY day_of_week, hour
+    """
+    
+    try:
+        df = bq_client.query(sql).to_dataframe()
+        return df
+    except Exception as e:
+        print(f"Fehler in load_weekly_patterns: {e}")
+        return pd.DataFrame()
 
 def load_scatter_fare_distance(taxi_type="ALL", year=None, borough=None) -> pd.DataFrame:
     return pd.DataFrame({"trip_distance": [], "fare_amount": []})

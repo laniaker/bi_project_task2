@@ -186,8 +186,8 @@ def register_predefined_callbacks(app):
         )
 
 # ---------------------------------------------------
-    # UPDATE: Executive Insights Panel (Unten Links)
-    # ---------------------------------------------------
+    # Executive Insights Panel (Unten Links)
+# ---------------------------------------------------
     @app.callback(
         [
             Output("tbl-top-boroughs", "children"),
@@ -236,7 +236,6 @@ def register_predefined_callbacks(app):
             peak_hour = "?"
 
         # 4. Generierung des "Insight Text" (Dynamische Interpretation)
-        # Hier erfüllen wir die Anforderung: "Kontextabhängige Beschreibung"
         
         text_parts = []
         
@@ -259,6 +258,5 @@ def register_predefined_callbacks(app):
         # Baustein C: Zusammenfügen
         insight_msg = " ".join(text_parts)
 
-        # Wir nutzen dcc.Markdown, damit wir **fettdruck** nutzen können
         import dash.dcc as dcc
         return rows_boroughs, rows_hours, dcc.Markdown(insight_msg)
