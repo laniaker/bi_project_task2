@@ -3,9 +3,11 @@ from dash import Dash, dcc, html, Input, Output
 
 from layouts.layout_predefined import layout_predefined
 from layouts.layout_creative import layout_creative
+from layouts.layout_location import layout_location
 
 from callbacks.predefined_callbacks import register_predefined_callbacks
 from callbacks.creative_callbacks import register_creative_callbacks
+from callbacks.location_callbacks import register_location_callbacks
 
 # ---------------------------------------------------
 # Pfade / Assets
@@ -237,6 +239,7 @@ app.layout = html.Div(
                                     children=[
                                         dcc.Tab(label="Pre-defined", value="tab-predefined"),
                                         dcc.Tab(label="Creative", value="tab-creative"),
+                                        dcc.Tab(label="Location", value="tab-location"), 
                                     ],
                                 )
                             ],
@@ -255,14 +258,19 @@ app.layout = html.Div(
 # ---------------------------------------------------
 @app.callback(Output("tab-content", "children"), Input("main-tabs", "value"))
 def render_tab(tab):
-    # Standard: Predefined, alternativ Creative
-    return layout_creative() if tab == "tab-creative" else layout_predefined()
+    if tab == "tab-creative":
+        return layout_creative()
+    elif tab == "tab-location":   
+        return layout_location()
+    else:
+        return layout_predefined()
 
 # ---------------------------------------------------
 # Callback-Registrierung (Charts, Filter-Initialisierung etc.)
 # ---------------------------------------------------
 register_predefined_callbacks(app)
 register_creative_callbacks(app)
+register_location_callbacks(app)
 
 # ---------------------------------------------------
 # Lokaler Start

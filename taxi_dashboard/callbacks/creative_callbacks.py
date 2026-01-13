@@ -9,7 +9,8 @@ from utils.plot_style import apply_exec_style
 
 # Datenzugriff
 from utils.data_access import (
-    load_weekly_patterns, load_agg_fare_dist
+    load_weekly_patterns, load_agg_fare_dist,
+    load_borough_flows, load_revenue_efficiency
 )
 
 def register_creative_callbacks(app):
@@ -123,39 +124,101 @@ def register_creative_callbacks(app):
         return fig
     
     # ---------------------------------------------------
-    # 3) Flows: Dominante Pickup → Dropoff (PLATZHALTER)
+    # 3) Flows: Pickup -> Dropoff (Stacked Bar)
     # ---------------------------------------------------
     @app.callback(
         Output("fig-flows", "figure"),
         Input("filter-taxi-type", "value"),
+        Input("filter-year", "value"),
+        Input("filter-borough", "value"),
     )
-    def fig_flows(taxi_type):
-        # Platzhalter
-        fig = go.Figure()
-        fig.update_layout(
-            title="Borough Flows (Coming Soon)",
-            xaxis={"visible": False}, 
-            yaxis={"visible": False}
+    def fig_flows(taxi_type, year, borough):
+        if not taxi_type: taxi_type = "ALL"
+        
+        # 1. Daten laden
+        df = load_borough_flows(taxi_type, year, borough)
+        
+        if df.empty:
+            fig = go.Figure()
+            fig.update_layout(title="Keine Daten")
+            apply_exec_style(fig)
+            return fig
+
+        # 2. Plotten als Stacked Bar Chart
+        # x = Wo steigen sie ein?
+        # y = Wie viele?
+        # color = Wo wollen sie hin? (Der Stapel)
+        fig = px.bar(
+            df,
+            x="pickup_borough",
+            y="trips",
+            color="dropoff_borough",
+            title="Verkehrsströme (Pickup → Dropoff)",
+            # Optional: Eine schöne Farbpalette für die Dropoff-Ziele
+            color_discrete_sequence=px.colors.qualitative.Prism 
         )
-        apply_exec_style(fig)
+        
+        # 3. Styling
+        fig.update_layout(
+            xaxis_title="Start-Bezirk (Pickup)",
+            yaxis_title="Anzahl Fahrten",
+            legend_title="Ziel-Bezirk (Dropoff)",
+            barmode="stack", # Stellt sicher, dass gestapelt wird
+            margin=dict(l=40, r=40, t=40, b=40)
+        )
+        
+        apply_exec_style(fig, title="Verkehrsströme (Pickup → Dropoff)")
+        
         return fig
 
     # ---------------------------------------------------
-    # 4) KPI: Revenue Efficiency (PLATZHALTER)
+    # 4) Revenue Efficiency (Boxplot)
     # ---------------------------------------------------
     @app.callback(
         Output("fig-kpi-rev-eff", "figure"),
         Input("filter-taxi-type", "value"),
+        Input("filter-year", "value"),
+        Input("filter-borough", "value"),
     )
-    def fig_rev_eff(taxi_type):
-        # Platzhalter
+    def fig_efficiency(taxi_type, year, borough):
+        if not taxi_type: taxi_type = "ALL"
+        
+        df = load_revenue_efficiency(taxi_type, year, borough)
+        
+        if df.empty:
+            fig = go.Figure()
+            fig.update_layout(title="Keine Daten")
+            apply_exec_style(fig)
+            return fig
+        
         fig = go.Figure()
+
+        categories = sorted(df["trip_category"].unique())
+        
+        for cat in categories:
+            cat_data = df[df["trip_category"] == cat]
+            
+            fig.add_trace(go.Box(
+                name=cat,
+                x=[cat], 
+                q1=[cat_data["q1_val"].mean()],
+                median=[cat_data["median_val"].mean()],
+                q3=[cat_data["q3_val"].mean()],
+                lowerfence=[cat_data["min_val"].mean()],
+                upperfence=[cat_data["max_val"].mean()],
+                marker_color="#3498db",
+                showlegend=False
+            ))
+
         fig.update_layout(
-            title="Revenue Efficiency (Coming Soon)",
-            xaxis={"visible": False}, 
-            yaxis={"visible": False}
+            title="Effizienz: Kurzstrecke vs. Langstrecke",
+            yaxis_title="Umsatz pro Minute ($)",
+            yaxis=dict(range=[0, 3]),
+            margin=dict(l=50, r=20, t=50, b=40)
         )
+        
         apply_exec_style(fig)
+        
         return fig
     
     # ---------------------------------------------------

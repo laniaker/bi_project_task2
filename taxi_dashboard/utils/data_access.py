@@ -362,11 +362,78 @@ def load_agg_fare_dist(taxi_type="ALL", year=None, borough=None):
         print(f"Fehler in load_agg_fare_dist: {e}")
         return pd.DataFrame()
 
-def load_flows(taxi_type="ALL", year=None) -> pd.DataFrame:
-    return pd.DataFrame({"pu_borough": [], "do_borough": [], "trips": []})
+def load_borough_flows(taxi_type="ALL", year=None, borough=None):
+    """
+    Lädt Daten für die Flows (Pickup -> Dropoff).
+    """
+    if not bq_client: return pd.DataFrame()
 
-def load_revenue_efficiency(taxi_type="ALL", year=None, borough=None) -> pd.DataFrame:
-    return pd.DataFrame({"bucket": [], "rev_eff": []})
+    TABLE = "taxi-bi-project.aggregational.agg_borough_flows"
+    
+    filters = ["1=1"]
+    if taxi_type and taxi_type != "ALL": filters.append(f"taxi_type = '{taxi_type}'")
+    if year: filters.append(f"year = {year}")
+    if borough: filters.append(f"pickup_borough = '{borough}'")
+    
+    where_clause = " AND ".join(filters)
+    
+    sql = f"""
+        SELECT 
+            pickup_borough,
+            dropoff_borough,
+            SUM(trips) as trips
+        FROM `{TABLE}`
+        WHERE {where_clause}
+        GROUP BY 1, 2
+        ORDER BY trips DESC
+    """
+    
+    try:
+        df = bq_client.query(sql).to_dataframe()
+        return df
+    except Exception as e:
+        print(f"Fehler in load_borough_flows: {e}")
+        return pd.DataFrame()
+
+def load_revenue_efficiency(taxi_type="ALL", year=None, borough=None):
+    """
+    Lädt Boxplot-Statistiken (Duration Categories).
+    """
+    if not bq_client: return pd.DataFrame()
+
+    TABLE = "taxi-bi-project.aggregational.agg_revenue_efficiency"
+    
+    filters = ["1=1"]
+    if taxi_type and taxi_type != "ALL": filters.append(f"taxi_type = '{taxi_type}'")
+    if year: filters.append(f"year = {year}")
+    
+    if borough: filters.append(f"borough = '{borough}'")
+    
+    where_clause = " AND ".join(filters)
+    
+    sql = f"""
+        SELECT 
+            trip_category,
+            SUM(total_trips) as trips,
+            
+            -- Wir mitteln die Quantile der gefilterten Gruppen
+            AVG(quantiles[OFFSET(0)]) as min_val,
+            AVG(quantiles[OFFSET(1)]) as q1_val,
+            AVG(quantiles[OFFSET(2)]) as median_val,
+            AVG(quantiles[OFFSET(3)]) as q3_val,
+            AVG(quantiles[OFFSET(4)]) as max_val
+        FROM `{TABLE}`
+        WHERE {where_clause}
+        GROUP BY 1
+        ORDER BY 1
+    """
+    
+    try:
+        df = bq_client.query(sql).to_dataframe()
+        return df
+    except Exception as e:
+        print(f"Fehler in load_revenue_efficiency: {e}")
+        return pd.DataFrame()
 
 def get_kpi_data(taxi_type="ALL", year=None, borough=None):
     """
