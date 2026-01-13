@@ -120,5 +120,26 @@ def layout_creative():
                     dcc.Graph(id="fig-weekly-patterns-creative", style={"height": "340px"}, config={"displayModeBar": False}),
                 ],
             ),
+            # ---------------------------------------------------
+            # 6) IT & Data Quality Audit
+            # ---------------------------------------------------
+            html.Div(
+                className="card",
+                style={"gridColumn": "1 / -1", "marginTop": "20px"},
+                children=[
+                    html.Div(
+                        className="card-head",
+                        children=[
+                            html.H3("IT & Data Quality Audit"),
+                            html.P("Überwachung technischer Artefakte: GPS-Ausfälle und ungültige Zonen-IDs."),
+                        ],
+                    ),
+                    dcc.Graph(
+                        id="fig-quality-audit",
+                        style={"height": "400px"},
+                        config={"displayModeBar": False},
+                    ),
+                ],
+            ),
         ],
     )

@@ -10,7 +10,8 @@ from utils.plot_style import apply_exec_style
 # Datenzugriff
 from utils.data_access import (
     load_weekly_patterns, load_agg_fare_dist,
-    load_borough_flows, load_revenue_efficiency
+    load_borough_flows, load_revenue_efficiency,
+    load_quality_audit
 )
 
 def register_creative_callbacks(app):
@@ -289,5 +290,58 @@ def register_creative_callbacks(app):
         )
         
         apply_exec_style(fig, title="Wochenverlauf (Start: Montag)")
+        
+        return fig
+    
+    # ---------------------------------------------------
+    # 6) IT & Data Quality Audit (Stacked Area)
+    # ---------------------------------------------------
+    @app.callback(
+        Output("fig-quality-audit", "figure"),
+        Input("filter-taxi-type", "value"),
+        Input("filter-year", "value"),
+    )
+    def fig_quality_audit(taxi_type, year):
+        # 1. Daten laden
+        df = load_quality_audit(taxi_type, year)
+        
+        if df.empty:
+            fig = go.Figure()
+            apply_exec_style(fig, title="Keine Audit-Daten")
+            return fig
+
+        # 2. Daten für Plotly transformieren (Melt)
+        df_melted = df.melt(
+            id_vars=["month"], 
+            value_vars=["gps_failures", "unknown_locations"],
+            var_name="issue_type", 
+            value_name="count"
+        )
+
+        # 3. Plotten
+        fig = px.area(
+            df_melted, 
+            x="month", 
+            y="count", 
+            color="issue_type",
+            color_discrete_map={
+                "gps_failures": "#ef4444",      # Soft Red
+                "unknown_locations": "#f59e0b"  # Amber/Orange
+            },
+            labels={
+                "month": "Zeitraum", 
+                "count": "Anzahl Issues", 
+                "issue_type": "Fehler-Typ"
+            }
+        )
+
+        # 4. Styling
+        fig.update_layout(
+            xaxis_title=None,
+            yaxis_title="Anzahl Artefakte",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        
+        apply_exec_style(fig, title="Data Quality Monitoring (System Health)")
         
         return fig

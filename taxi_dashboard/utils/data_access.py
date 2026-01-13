@@ -600,3 +600,38 @@ def load_trips_and_geometries(taxi_type="ALL", year=None, borough=None):
     except Exception as e:
         print(f"Fehler beim Laden der Geodaten: {e}")
         return pd.DataFrame(), {}
+    
+def load_quality_audit(taxi_type="ALL", year=None):
+    """
+    Lädt monatliche Statistiken zur Datenqualität (GPS-Fehler, unbekannte Standorte).
+    Basierend auf agg_quality_audit.
+    """
+    if not bq_client: return pd.DataFrame()
+
+    TABLE = "taxi-bi-project.aggregational.agg_quality_audit"
+    
+    filters = ["1=1"]
+    if taxi_type and taxi_type != "ALL":
+        filters.append(f"source_system = '{taxi_type}'")
+    if year:
+        # Extrahiert das Jahr aus dem 'month' Feld (DATE_TRUNC)
+        filters.append(f"EXTRACT(YEAR FROM month) = {year}")
+    
+    where_clause = " AND ".join(filters)
+    
+    sql = f"""
+        SELECT 
+            month,
+            SUM(total_trips) as total_trips,
+            SUM(gps_failures) as gps_failures,
+            SUM(unknown_locations) as unknown_locations
+        FROM `{TABLE}`
+        WHERE {where_clause}
+        GROUP BY 1
+        ORDER BY 1
+    """
+    try:
+        return bq_client.query(sql).to_dataframe()
+    except Exception as e:
+        print(f"Fehler in load_quality_audit: {e}")
+        return pd.DataFrame()
