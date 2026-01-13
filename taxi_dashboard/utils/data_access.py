@@ -1,4 +1,5 @@
 import pandas as pd
+import json
 from google.cloud import bigquery
 
 # BigQuery Client initialisieren
@@ -536,3 +537,66 @@ def get_top_hours(taxi_type="ALL", year=None, borough=None):
     except Exception as e:
         print(f"Fehler Top Hours: {e}")
         return []
+    
+def load_trips_and_geometries(taxi_type="ALL", year=None, borough=None):
+    """
+    Lädt aggregierte Trip-Daten und zugehörige Geometrien aus dem BigQuery-DWH.
+    Konvertiert die Ergebnisse in ein Pandas DataFrame und ein valides GeoJSON-Format.
+    """
+    if not bq_client: 
+        return pd.DataFrame(), {}
+
+    # Zugriff auf die optimierte Aggregationstabelle
+    TABLE = "taxi-bi-project.aggregational.agg_location_map"
+    
+    # Dynamischer Aufbau der SQL-Filterbedingungen basierend auf der Nutzerauswahl
+    filters = ["1=1"]
+    if taxi_type and taxi_type != "ALL": 
+        filters.append(f"taxi_type = '{taxi_type}'")
+    if year: 
+        filters.append(f"year = {year}")
+    if borough: 
+        filters.append(f"borough = '{borough}'")
+    
+    where_clause = " AND ".join(filters)
+    
+    # SQL-Abfrage zur Selektion der geografischen Kennzahlen und Namen
+    sql = f"""
+        SELECT 
+            location_id,
+            zone,
+            borough,
+            geojson_str,
+            SUM(trip_count) as trip_count
+        FROM `{TABLE}`
+        WHERE {where_clause}
+        GROUP BY 1, 2, 3, 4
+    """
+    
+    try:
+        # Ausführung der Query und Konvertierung in ein DataFrame
+        df = bq_client.query(sql).to_dataframe()
+        if df.empty: 
+            return df, {}
+
+        # Transformation der GeoJSON-Strings in eine FeatureCollection für Plotly
+        features = []
+        for _, row in df.iterrows():
+            if row['geojson_str']:
+                feature = {
+                    "type": "Feature",
+                    "geometry": json.loads(row['geojson_str']),
+                    "id": str(row['location_id']), 
+                    "properties": {
+                        "zone": row['zone'], 
+                        "borough": row['borough']
+                    }
+                }
+                features.append(feature)
+        
+        geojson_data = {"type": "FeatureCollection", "features": features}
+        return df, geojson_data
+        
+    except Exception as e:
+        print(f"Fehler beim Laden der Geodaten: {e}")
+        return pd.DataFrame(), {}
