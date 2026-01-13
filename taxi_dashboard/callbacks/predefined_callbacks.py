@@ -1,46 +1,53 @@
-from dash import Input, Output
+from dash import Input, Output, html, dcc
 import plotly.express as px
 import plotly.graph_objects as go
 
-# Einheitliches Styling für alle Visuals (Layout, Typografie, Abstände, Titel)
+# Einheitliches Styling für alle Visuals
 from utils.plot_style import apply_exec_style
 
-# Datenzugriff: Loader + Hilfsfunktion für Filter-Optionen
+# Datenzugriff
 from utils.data_access import (
     get_filter_options,
     load_peak_hours,
     load_fares_by_borough,
     load_tip_percentage,
     load_demand_over_years,
+    get_kpi_data,
+    get_top_boroughs,
+    get_top_hours,
 )
-
 
 def register_predefined_callbacks(app):
     """
     Registriert alle Callbacks für den 'Predefined'-Tab.
-    Fokus: vordefinierte Standard-Analysen, die direkt auf den Filtern basieren.
+    Zuständig für die Interaktivität der Standard-Charts.
     """
 
     # ---------------------------------------------------
-    # 0) Initialisierung der Filteroptionen (Year/Borough)
-    #    -> wird beim Tab-Wechsel getriggert, damit Dropdowns sauber befüllt sind
+    # Initialisierung der Filteroptionen
     # ---------------------------------------------------
     @app.callback(
         Output("filter-year", "options"),
         Output("filter-borough", "options"),
-        Input("main-tabs", "value"),
+        Output("filter-taxi-type", "options"),  
+        Input("filter-taxi-type", "id"), 
     )
     def init_filter_options(_):
-        # verfügbare Werte aus der Datenbasis holen (z. B. distinct years/boroughs)
-        years, boroughs = get_filter_options()
+        # Abfrage der verfügbaren Filterwerte aus der Datenbank
+        years, boroughs, taxi_types = get_filter_options()
 
-        # Dash-Dropdown erwartet eine Liste von Dicts (label/value)
+        # Formatierung für Dash Dropdowns
         year_opts = [{"label": str(y), "value": y} for y in years]
         borough_opts = [{"label": b, "value": b} for b in boroughs]
-        return year_opts, borough_opts
+        taxi_opts = [{"label": t, "value": t} for t in taxi_types]
+        
+        # Option 'All' hinzufügen
+        taxi_opts.insert(0, {"label": "All Taxis", "value": "ALL"})
+
+        return year_opts, borough_opts, taxi_opts
 
     # ---------------------------------------------------
-    # 1) Peak Hours: Nachfrage je Stunde (Trips)
+    # Chart 1: Peak Hours (Balkendiagramm)
     # ---------------------------------------------------
     @app.callback(
         Output("fig-peak-hours", "figure"),
@@ -49,24 +56,23 @@ def register_predefined_callbacks(app):
         Input("filter-borough", "value"),
     )
     def fig_peak_hours(taxi_type, year, borough):
-        # aggregierte Trips pro Stunde für die aktuellen Filter laden
+        if not taxi_type: taxi_type = "ALL"
+        
         df = load_peak_hours(taxi_type, year, borough)
 
-        # Guard: keine Daten für die Filterkombination
         if df.empty:
             fig = go.Figure()
-            fig.update_layout(title="Keine Daten")
+            fig.update_layout(title="Keine Daten für diese Auswahl")
             apply_exec_style(fig)
             return fig
 
-        # Balken-Chart: x = Stunde, y = Anzahl Fahrten
         fig = px.bar(df, x="hour", y="trips")
-        fig.update_layout(xaxis_title="Stunde", yaxis_title="Fahrten")
-        apply_exec_style(fig, title="Peak Hours – Taxi Demand")
+        fig.update_layout(xaxis_title="Stunde (0-23)", yaxis_title="Anzahl Fahrten")
+        apply_exec_style(fig, title="Peak Hours – Nachfrage pro Tageszeit")
         return fig
 
     # ---------------------------------------------------
-    # 2) Fares by Borough: Verteilung der Fare Amounts je Borough
+    # Chart 2: Fares by Borough (Boxplot)
     # ---------------------------------------------------
     @app.callback(
         Output("fig-fares-borough", "figure"),
@@ -74,24 +80,36 @@ def register_predefined_callbacks(app):
         Input("filter-year", "value"),
     )
     def fig_fares(taxi_type, year):
-        # Fare-Daten je Borough laden (typisch für Boxplot bereits "long format")
+        if not taxi_type: taxi_type = "ALL"
+
+        # Lädt voraggregierte Statistik-Daten (Min, Q1, Median, Q3, Max)
         df = load_fares_by_borough(taxi_type, year)
 
-        # Guard: kein Ergebnis
         if df.empty:
             fig = go.Figure()
-            fig.update_layout(title="Keine Daten")
+            fig.update_layout(title="Keine Daten verfügbar")
             apply_exec_style(fig)
             return fig
 
-        # Boxplot: zeigt Median/Quartile/Ausreißer pro Borough
-        fig = px.box(df, x="borough", y="fare_amount")
-        fig.update_layout(xaxis_title="Borough", yaxis_title="Fare Amount")
-        apply_exec_style(fig, title="Fares by Borough")
+        # Nutzung von go.Box für vorgefertigte Quantile
+        fig = go.Figure()
+        
+        fig.add_trace(go.Box(
+            x=df["borough"],
+            lowerfence=df["min_fare"], 
+            q1=df["q1_fare"],
+            median=df["median_fare"],
+            q3=df["q3_fare"],
+            upperfence=df["max_fare"],
+            name="Preisverteilung"
+        ))
+
+        fig.update_layout(xaxis_title="Stadtteil", yaxis_title="Fahrpreis ($)")
+        apply_exec_style(fig, title="Fahrpreisverteilung nach Stadtteil (Boxplot)")
         return fig
 
     # ---------------------------------------------------
-    # 3) Average Tip Percentage: durchschnittliche Trinkgeldquote je Bucket
+    # Chart 3: Tip Percentage
     # ---------------------------------------------------
     @app.callback(
         Output("fig-tip-percentage", "figure"),
@@ -100,24 +118,22 @@ def register_predefined_callbacks(app):
         Input("filter-borough", "value"),
     )
     def fig_tip_pct(taxi_type, year, borough):
-        # Tip-Buckets laden (z. B. Distanz-/Preisgruppen oder definierte Segmente)
+        if not taxi_type: taxi_type = "ALL"
+
         df = load_tip_percentage(taxi_type, year, borough)
 
-        # Guard: keine Daten
         if df.empty:
             fig = go.Figure()
-            fig.update_layout(title="Keine Daten")
             apply_exec_style(fig)
             return fig
 
-        # Balken: x = Bucket/Gruppe, y = Ø Trinkgeldquote
         fig = px.bar(df, x="bucket", y="avg_tip_pct")
-        fig.update_layout(xaxis_title="Gruppe", yaxis_title="Ø Tip %")
-        apply_exec_style(fig, title="Average Tip Percentage")
+        fig.update_layout(xaxis_title="Kategorie", yaxis_title="Ø Trinkgeld (%)")
+        apply_exec_style(fig, title="Durchschnittliches Trinkgeld")
         return fig
 
     # ---------------------------------------------------
-    # 4) Demand Shift over Years: Entwicklung der Trips über die Jahre
+    # Chart 4: Demand Shift (Zeitreihe)
     # ---------------------------------------------------
     @app.callback(
         Output("fig-demand-years", "figure"),
@@ -125,18 +141,122 @@ def register_predefined_callbacks(app):
         Input("filter-borough", "value"),
     )
     def fig_demand_years(taxi_type, borough):
-        # Trips pro Jahr laden (Zeitreihe / Trend)
+        if not taxi_type: taxi_type = "ALL"
+
         df = load_demand_over_years(taxi_type, borough)
 
-        # Guard: keine Daten
         if df.empty:
             fig = go.Figure()
-            fig.update_layout(title="Keine Daten")
             apply_exec_style(fig)
             return fig
 
-        # Linienchart mit Markern für bessere Lesbarkeit einzelner Jahre
         fig = px.line(df, x="year", y="trips", markers=True)
-        fig.update_layout(xaxis_title="Jahr", yaxis_title="Fahrten")
-        apply_exec_style(fig, title="Demand Shift over Years")
+        fig.update_layout(xaxis_title="Jahr", yaxis_title="Gesamtfahrten")
+        apply_exec_style(fig, title="Entwicklung der Nachfrage über Jahre")
         return fig
+    
+    # ---------------------------------------------------
+    # NUR KPI-Update (Obere Leiste)
+    # ---------------------------------------------------
+    @app.callback(
+        [
+            Output("kpi-trips", "children"),
+            Output("kpi-avg-fare", "children"),
+            Output("kpi-avg-tip", "children"),
+            Output("kpi-outlier", "children"),
+        ],
+        [
+            Input("filter-taxi-type", "value"),
+            Input("filter-year", "value"),
+            Input("filter-borough", "value"),
+        ]
+    )
+    def update_kpis_only(taxi_type, year, borough):
+        if not taxi_type: taxi_type = "ALL"
+
+        # Daten holen
+        trips, fare, tip, outlier = get_kpi_data(taxi_type, year, borough)
+        
+        # Formatieren
+        return (
+            f"{int(trips):,}".replace(",", "."),  # Trips (z.B. 1.200.000)
+            f"{fare:.2f} $",                      # Fare (z.B. 15.50 $)
+            f"{tip:.1f} %",                       # Tip (z.B. 12.5 %)
+            f"{outlier:.1f} %"                    # Outlier (z.B. 2.1 %)
+        )
+
+# ---------------------------------------------------
+    # Executive Insights Panel (Unten Links)
+# ---------------------------------------------------
+    @app.callback(
+        [
+            Output("tbl-top-boroughs", "children"),
+            Output("tbl-top-hours", "children"),
+            Output("insight-text", "children")
+        ],
+        [
+            Input("filter-taxi-type", "value"),
+            Input("filter-year", "value"),
+            Input("filter-borough", "value"),
+        ]
+    )
+    def update_insights_panel(taxi_type, year, borough):
+        if not taxi_type: taxi_type = "ALL"
+
+        # 1. Daten holen
+        top_b_data = get_top_boroughs(taxi_type, year)
+        top_h_data = get_top_hours(taxi_type, year, borough)
+
+        # 2. Tabelle "Top Boroughs" bauen (HTML Rows)
+        if top_b_data:
+            rows_boroughs = [
+                html.Tr([
+                    html.Td(row['Borough']), 
+                    html.Td(f"{int(row['Trips']):,}".replace(",", "."))
+                ]) for row in top_b_data
+            ]
+            # Für den Text: Wer ist Platz 1?
+            winner_borough = top_b_data[0]['Borough']
+        else:
+            rows_boroughs = [html.Tr([html.Td("-"), html.Td("-")])]
+            winner_borough = "Unbekannt"
+
+        # 3. Tabelle "Top Hours" bauen (HTML Rows)
+        if top_h_data:
+            rows_hours = [
+                html.Tr([
+                    html.Td(f"{row['Hour']}:00"), 
+                    html.Td(f"{int(row['Trips']):,}".replace(",", "."))
+                ]) for row in top_h_data
+            ]
+            # Für den Text: Wann ist Peak?
+            peak_hour = top_h_data[0]['Hour']
+        else:
+            rows_hours = [html.Tr([html.Td("-"), html.Td("-")])]
+            peak_hour = "?"
+
+        # 4. Generierung des "Insight Text" (Dynamische Interpretation)
+        
+        text_parts = []
+        
+        # Baustein A: Wer dominiert?
+        if borough:
+            text_parts.append(f"Fokus auf **{borough}**.")
+        else:
+            text_parts.append(f"**{winner_borough}** ist der nachfragestärkste Bezirk.")
+
+        # Baustein B: Wann ist Peak?
+        if peak_hour != "?":
+            # Kleine Logik: Ist es morgens, abends oder nachts?
+            if 6 <= peak_hour < 10: time_of_day = "im morgendlichen Berufsverkehr"
+            elif 16 <= peak_hour < 20: time_of_day = "zum Feierabend"
+            elif 0 <= peak_hour < 5: time_of_day = "im Nachtleben"
+            else: time_of_day = "tagsüber"
+            
+            text_parts.append(f"Die höchste Auslastung zeigt sich um **{peak_hour}:00 Uhr** ({time_of_day}).")
+
+        # Baustein C: Zusammenfügen
+        insight_msg = " ".join(text_parts)
+
+        import dash.dcc as dcc
+        return rows_boroughs, rows_hours, dcc.Markdown(insight_msg)

@@ -103,5 +103,22 @@ def layout_creative():
                     ),
                 ],
             ),
+            # ---------------------------------------------------
+            # 5) Weekly Traffic Patterns
+            # ---------------------------------------------------
+            html.Div(
+                className="card",
+                style={"gridColumn": "1 / -1"},
+                children=[
+                    html.Div(
+                        className="card-head",
+                        children=[
+                            html.H3("Weekly Traffic Patterns (Linear)"),
+                            html.P("Gesamtverlauf Mo–So (gestapelt nach Taxi-Typ)."),
+                        ],
+                    ),
+                    dcc.Graph(id="fig-weekly-patterns-creative", style={"height": "340px"}, config={"displayModeBar": False}),
+                ],
+            ),
         ],
     )
