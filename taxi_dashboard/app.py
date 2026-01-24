@@ -14,7 +14,7 @@ from callbacks.location_callbacks import register_location_callbacks
 # ---------------------------------------------------
 # Basisverzeichnis dieses Files (für stabile relative Pfade)
 BASE_DIR = Path(__file__).resolve().parent
-# Assets (CSS, ggf. Bilder) werden von Dash automatisch geladen
+# Assets (CSS, ggf. Bilder) werden von Dash automatisch geladen 
 ASSETS_DIR = BASE_DIR / "assets"
 
 # ---------------------------------------------------

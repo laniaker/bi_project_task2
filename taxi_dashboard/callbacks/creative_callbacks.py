@@ -11,7 +11,7 @@ from utils.plot_style import apply_exec_style
 from utils.data_access import (
     load_weekly_patterns, load_agg_fare_dist,
     load_borough_flows, load_revenue_efficiency,
-    load_quality_audit
+    load_quality_audit, load_airport_sunburst_data
 )
 
 def register_creative_callbacks(app):
@@ -344,4 +344,97 @@ def register_creative_callbacks(app):
         
         apply_exec_style(fig, title="Data Quality Monitoring (System Health)")
         
+        return fig
+    
+    # ---------------------------------------------------
+    # 7) Airport Sunburst (Final: Umsatz, Trips, Tip & Fare)
+    # ---------------------------------------------------
+    @app.callback(
+        Output("fig-airport-analysis", "figure"),
+        Input("filter-taxi-type", "value"),
+        Input("filter-year", "value"),
+    )
+    def fig_airport_sunburst(taxi_type, year):
+        # 1. Daten laden
+        df = load_airport_sunburst_data(taxi_type, year)
+        
+        if df.empty:
+            fig = go.Figure()
+            fig.update_layout(title="Keine Daten für diese Auswahl")
+            apply_exec_style(fig)
+            return fig
+
+        # -------------------------------------------------------
+        # Manuelle Hierarchie-Bildung
+        # -------------------------------------------------------
+        # Wir summieren alle nötigen Spalten für die Ebenen
+        cols_to_sum = ["total_revenue", "total_trips", "total_tip", "total_fare_all", "total_fare_card"]
+        
+        # A) Ebene 1: Airports
+        lvl1 = df.groupby("airport")[cols_to_sum].sum().reset_index()
+        lvl1["id"] = lvl1["airport"]
+        lvl1["parent"] = "" 
+        lvl1["label"] = lvl1["airport"]
+
+        # B) Ebene 2: Direction
+        lvl2 = df.groupby(["airport", "direction"])[cols_to_sum].sum().reset_index()
+        lvl2["id"] = lvl2["airport"] + " - " + lvl2["direction"]
+        lvl2["parent"] = lvl2["airport"] 
+        lvl2["label"] = lvl2["direction"]
+
+        # C) Ebene 3: Boroughs
+        lvl3 = df.copy()
+        lvl3["id"] = lvl3["airport"] + " - " + lvl3["direction"] + " - " + lvl3["connected_borough"]
+        lvl3["parent"] = lvl3["airport"] + " - " + lvl3["direction"]
+        lvl3["label"] = lvl3["connected_borough"]
+        
+        # D) Alles zusammenfügen
+        df_all = pd.concat([lvl1, lvl2, lvl3], ignore_index=True)
+
+        # E) Kennzahlen berechnen
+        # 1. Tip % berechnen wir NUR auf Basis der Credit Card Fares
+        # (Vermeidet Division durch Null mit np.where oder fillna)
+        df_all["avg_tip_pct"] = (df_all["total_tip"] / df_all["total_fare_card"] * 100).fillna(0)
+        
+        # 2. Durchschnittspreis berechnen wir auf Basis ALLER Fares
+        df_all["avg_fare"] = (df_all["total_fare_all"] / df_all["total_trips"]).fillna(0)
+
+        # -------------------------------------------------------
+        # Plotten
+        # -------------------------------------------------------
+        fig = go.Figure(go.Sunburst(
+            ids=df_all["id"],
+            labels=df_all["label"],
+            parents=df_all["parent"],
+            values=df_all["total_revenue"],
+            
+            marker=dict(
+                colors=df_all["avg_tip_pct"],
+                colorscale="RdYlGn",
+                cmid=15, 
+                colorbar=dict(title="Ø Tip % (Card Only)"),
+                line=dict(color='black', width=0.5)
+            ),
+            
+            customdata=df_all[["total_revenue", "total_trips", "avg_tip_pct", "avg_fare"]],
+            
+            hovertemplate=(
+                "<b>%{label}</b><br>" +
+                "Umsatz: %{customdata[0]:,.0f} $<br>" +
+                "Fahrten: %{customdata[1]:,.0f}<br>" +
+                "Ø Fare: %{customdata[3]:.2f} $<br>" + 
+                "Ø Tip: %{customdata[2]:.1f}%" +
+                "<extra></extra>"
+            ),
+            
+            insidetextorientation='auto',
+            branchvalues="total" 
+        ))
+
+        fig.update_layout(
+            margin=dict(t=30, l=10, r=10, b=10),
+        )
+        
+        apply_exec_style(fig, title="Airport Value Map (Klick zum Zoomen)")
+
         return fig

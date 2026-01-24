@@ -1,6 +1,5 @@
 from dash import dcc, html
 
-
 def layout_creative():
     """
     Erstellt das Layout für den Creative-Tab.
@@ -11,26 +10,44 @@ def layout_creative():
         className="grid-main",
         children=[
             # ---------------------------------------------------
+            # 1) Airport Value Map: Sunburst
+            # ---------------------------------------------------
+            html.Div(
+                className="card",
+                children=[
+                    html.Div(
+                        className="card-head",
+                        children=[
+                            html.H3("Airport Value Map"),
+                            html.P("Umsatz & Tip-Qualität (Sunburst)."),
+                        ],
+                    ),
+                    dcc.Graph(
+                        id="fig-airport-analysis",
+                        # Standard-Höhe wie die anderen Graphen
+                        style={"height": "340px"},
+                        config={"displayModeBar": False},
+                    ),
+                ],
+            ),
+
+            # ---------------------------------------------------
             # 1) Demand Heatmap: Stunde × Wochentag
             # ---------------------------------------------------
             html.Div(
                 className="card",
                 children=[
-                    # Card-Header: Titel + kurze inhaltliche Einordnung
                     html.Div(
                         className="card-head",
                         children=[
-                            html.H3("Demand Heatmap (Hour × Weekday)"),
-                            html.P(
-                                "Hohe Informationsdichte: Muster der Nachfrage "
-                                "nach Wochentag und Tageszeit."
-                            ),
+                            html.H3("Demand Heatmap"),
+                            html.P("Nachfrage nach Zeit & Wochentag."),
                         ],
                     ),
-                    # Plotly-Graph (Figure wird per Callback befüllt)
                     dcc.Graph(
                         id="fig-heatmap",
-                        config={"displayModeBar": False},  # reduzierte UI, Fokus auf Inhalt
+                        style={"height": "340px"}, # Explizit setzen für Einheitlichkeit
+                        config={"displayModeBar": False},
                     ),
                 ],
             ),
@@ -44,15 +61,13 @@ def layout_creative():
                     html.Div(
                         className="card-head",
                         children=[
-                            html.H3("Fare vs Distance (Scatter)"),
-                            html.P(
-                                "Erlaubt das Erkennen von Ausreißern, z. B. "
-                                "hohe Fahrpreise bei kurzer Distanz oder umgekehrt."
-                            ),
+                            html.H3("Fare vs Distance"),
+                            html.P("Preistruktur und Ausreißer."),
                         ],
                     ),
                     dcc.Graph(
                         id="fig-scatter-fare-distance",
+                        style={"height": "340px"},
                         config={"displayModeBar": False},
                     ),
                 ],
@@ -68,21 +83,19 @@ def layout_creative():
                         className="card-head",
                         children=[
                             html.H3("Pickup → Dropoff Flows"),
-                            html.P(
-                                "Visualisiert dominante Verkehrsströme zwischen "
-                                "den Boroughs, farblich nach Dropoff-Ziel."
-                            ),
+                            html.P("Dominante Verkehrsströme."),
                         ],
                     ),
                     dcc.Graph(
                         id="fig-flows",
+                        style={"height": "340px"},
                         config={"displayModeBar": False},
                     ),
                 ],
             ),
 
             # ---------------------------------------------------
-            # 4) KPI: Revenue Efficiency (Fare pro Minute)
+            # 4) KPI: Revenue Efficiency
             # ---------------------------------------------------
             html.Div(
                 className="card",
@@ -90,21 +103,20 @@ def layout_creative():
                     html.Div(
                         className="card-head",
                         children=[
-                            html.H3("Revenue Efficiency (Fare per Minute)"),
-                            html.P(
-                                "Boxplot zur Analyse der Verteilung, Streuung "
-                                "und Ausreißer je definierter Gruppe (Bucket)."
-                            ),
+                            html.H3("Revenue Efficiency"),
+                            html.P("Umsatz pro Minute (Boxplot)."),
                         ],
                     ),
                     dcc.Graph(
                         id="fig-kpi-rev-eff",
+                        style={"height": "340px"},
                         config={"displayModeBar": False},
                     ),
                 ],
             ),
+            
             # ---------------------------------------------------
-            # 5) Weekly Traffic Patterns
+            # 5) Weekly Traffic Patterns (Breite Card unten)
             # ---------------------------------------------------
             html.Div(
                 className="card",
@@ -113,30 +125,35 @@ def layout_creative():
                     html.Div(
                         className="card-head",
                         children=[
-                            html.H3("Weekly Traffic Patterns (Linear)"),
-                            html.P("Gesamtverlauf Mo–So (gestapelt nach Taxi-Typ)."),
+                            html.H3("Weekly Traffic Patterns"),
+                            html.P("Gesamtverlauf Mo–So."),
                         ],
                     ),
-                    dcc.Graph(id="fig-weekly-patterns-creative", style={"height": "340px"}, config={"displayModeBar": False}),
+                    dcc.Graph(
+                        id="fig-weekly-patterns-creative", 
+                        style={"height": "340px"}, 
+                        config={"displayModeBar": False}
+                    ),
                 ],
             ),
+            
             # ---------------------------------------------------
-            # 6) IT & Data Quality Audit
+            # 6) IT & Data Quality Audit (Breite Card unten)
             # ---------------------------------------------------
             html.Div(
                 className="card",
-                style={"gridColumn": "1 / -1", "marginTop": "20px"},
+                style={"gridColumn": "1 / -1"}, 
                 children=[
                     html.Div(
                         className="card-head",
                         children=[
-                            html.H3("IT & Data Quality Audit"),
-                            html.P("Überwachung technischer Artefakte: GPS-Ausfälle und ungültige Zonen-IDs."),
+                            html.H3("Data Quality Audit"),
+                            html.P("GPS-Ausfälle & Datenfehler."),
                         ],
                     ),
                     dcc.Graph(
                         id="fig-quality-audit",
-                        style={"height": "400px"},
+                        style={"height": "340px"},
                         config={"displayModeBar": False},
                     ),
                 ],

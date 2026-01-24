@@ -635,3 +635,47 @@ def load_quality_audit(taxi_type="ALL", year=None):
     except Exception as e:
         print(f"Fehler in load_quality_audit: {e}")
         return pd.DataFrame()
+    
+def load_airport_sunburst_data(taxi_type="ALL", year=None):
+    """
+    Lädt Daten für das Sunburst-Chart.
+    Unterscheidet zwischen Fare-Basis für Avg Price (Alle) und Tip (Card).
+    """
+    if not bq_client: return pd.DataFrame()
+
+    TABLE = "taxi-bi-project.aggregational.agg_airport_connectivity"
+
+    filters = ["1=1"]
+    if taxi_type and taxi_type != "ALL":
+        filters.append(f"taxi_type = '{taxi_type}'")
+    if year:
+        filters.append(f"year = {year}")
+
+    where_clause = " AND ".join(filters)
+
+    query = f"""
+        SELECT 
+            airport,
+            direction,
+            connected_borough,
+            
+            SUM(total_revenue) as total_revenue,
+            SUM(trip_count) as total_trips,
+            SUM(total_tip) as total_tip,
+            
+            -- Wir holen beide Basen:
+            SUM(total_fare_all) as total_fare_all,   -- Für Ø Preis
+            SUM(total_fare_card) as total_fare_card  -- Für Ø Tip %
+            
+        FROM `{TABLE}`
+        WHERE {where_clause}
+          AND connected_borough != 'Unknown'
+        GROUP BY 1, 2, 3
+        HAVING total_revenue > 1000 
+    """
+    
+    try:
+        return bq_client.query(query).to_dataframe()
+    except Exception as e:
+        print(f"Fehler in load_airport_sunburst_data: {e}")
+        return pd.DataFrame()
