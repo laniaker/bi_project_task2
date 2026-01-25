@@ -253,10 +253,10 @@ def register_creative_callbacks(app):
 
         # Farb-Mapping
         color_map = {
-            "YELLOW": "#f1c40f",
+            "YELLOW": "#f1c40f", 
             "GREEN": "#2ecc71",
-            "FHV": "#3498db",
-            "FHV - High Volume": "#3498db"
+            "FHV": "#636e72",                 
+            "FHV - High Volume": "#636e72"    
         }
 
         # Feste Reihenfolge für die Stapelung

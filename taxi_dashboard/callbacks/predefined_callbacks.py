@@ -1,6 +1,7 @@
-from dash import Input, Output, html, dcc
+from dash import Input, Output, State, html, dcc, ctx
 import plotly.express as px
 import plotly.graph_objects as go
+import pandas as pd
 
 # Einheitliches Styling für alle Visuals
 from utils.plot_style import apply_exec_style
@@ -15,15 +16,18 @@ from utils.data_access import (
     get_kpi_data,
     get_top_boroughs,
     get_top_hours,
+    load_weekly_patterns,      
+    load_tip_distribution,     
+    load_top_tipping_zones     
 )
 
 def register_predefined_callbacks(app):
     """
     Registriert alle Callbacks für den 'Predefined'-Tab.
-    Zuständig für die Interaktivität der Standard-Charts.
+    Zuständig für die Interaktivität der Standard-Charts und der Deep Dive Modals.
     """
 
-    # ---------------------------------------------------
+# ---------------------------------------------------
     # Initialisierung der Filteroptionen
     # ---------------------------------------------------
     @app.callback(
@@ -33,21 +37,16 @@ def register_predefined_callbacks(app):
         Input("filter-taxi-type", "id"), 
     )
     def init_filter_options(_):
-        # Abfrage der verfügbaren Filterwerte aus der Datenbank
         years, boroughs, taxi_types = get_filter_options()
 
-        # Formatierung für Dash Dropdowns
         year_opts = [{"label": str(y), "value": y} for y in years]
         borough_opts = [{"label": b, "value": b} for b in boroughs]
         taxi_opts = [{"label": t, "value": t} for t in taxi_types]
-        
-        # Option 'All' hinzufügen
-        taxi_opts.insert(0, {"label": "All Taxis", "value": "ALL"})
 
         return year_opts, borough_opts, taxi_opts
 
     # ---------------------------------------------------
-    # Chart 1: Peak Hours (Balkendiagramm)
+    # Chart 1: Peak Hours (Standard Balkendiagramm)
     # ---------------------------------------------------
     @app.callback(
         Output("fig-peak-hours", "figure"),
@@ -82,7 +81,6 @@ def register_predefined_callbacks(app):
     def fig_fares(taxi_type, year):
         if not taxi_type: taxi_type = "ALL"
 
-        # Lädt voraggregierte Statistik-Daten (Min, Q1, Median, Q3, Max)
         df = load_fares_by_borough(taxi_type, year)
 
         if df.empty:
@@ -91,9 +89,7 @@ def register_predefined_callbacks(app):
             apply_exec_style(fig)
             return fig
 
-        # Nutzung von go.Box für vorgefertigte Quantile
         fig = go.Figure()
-        
         fig.add_trace(go.Box(
             x=df["borough"],
             lowerfence=df["min_fare"], 
@@ -156,7 +152,7 @@ def register_predefined_callbacks(app):
         return fig
     
     # ---------------------------------------------------
-    # NUR KPI-Update (Obere Leiste)
+    # KPI-Update (Obere Leiste & Deep Dive Modal)
     # ---------------------------------------------------
     @app.callback(
         [
@@ -174,20 +170,18 @@ def register_predefined_callbacks(app):
     def update_kpis_only(taxi_type, year, borough):
         if not taxi_type: taxi_type = "ALL"
 
-        # Daten holen
         trips, fare, tip, outlier = get_kpi_data(taxi_type, year, borough)
         
-        # Formatieren
         return (
-            f"{int(trips):,}".replace(",", "."),  # Trips (z.B. 1.200.000)
-            f"{fare:.2f} $",                      # Fare (z.B. 15.50 $)
-            f"{tip:.1f} %",                       # Tip (z.B. 12.5 %)
-            f"{outlier:.1f} %"                    # Outlier (z.B. 2.1 %)
+            f"{int(trips):,}".replace(",", "."), 
+            f"{fare:.2f} $",                      
+            f"{tip:.1f} %",                       
+            f"{outlier:.1f} %"                    
         )
 
-# ---------------------------------------------------
+    # ---------------------------------------------------
     # Executive Insights Panel (Unten Links)
-# ---------------------------------------------------
+    # ---------------------------------------------------
     @app.callback(
         [
             Output("tbl-top-boroughs", "children"),
@@ -203,11 +197,9 @@ def register_predefined_callbacks(app):
     def update_insights_panel(taxi_type, year, borough):
         if not taxi_type: taxi_type = "ALL"
 
-        # 1. Daten holen
         top_b_data = get_top_boroughs(taxi_type, year)
         top_h_data = get_top_hours(taxi_type, year, borough)
 
-        # 2. Tabelle "Top Boroughs" bauen (HTML Rows)
         if top_b_data:
             rows_boroughs = [
                 html.Tr([
@@ -215,13 +207,11 @@ def register_predefined_callbacks(app):
                     html.Td(f"{int(row['Trips']):,}".replace(",", "."))
                 ]) for row in top_b_data
             ]
-            # Für den Text: Wer ist Platz 1?
             winner_borough = top_b_data[0]['Borough']
         else:
             rows_boroughs = [html.Tr([html.Td("-"), html.Td("-")])]
             winner_borough = "Unbekannt"
 
-        # 3. Tabelle "Top Hours" bauen (HTML Rows)
         if top_h_data:
             rows_hours = [
                 html.Tr([
@@ -229,25 +219,23 @@ def register_predefined_callbacks(app):
                     html.Td(f"{int(row['Trips']):,}".replace(",", "."))
                 ]) for row in top_h_data
             ]
-            # Für den Text: Wann ist Peak?
             peak_hour = top_h_data[0]['Hour']
         else:
             rows_hours = [html.Tr([html.Td("-"), html.Td("-")])]
             peak_hour = "?"
 
-        # 4. Generierung des "Insight Text" (Dynamische Interpretation)
-        
         text_parts = []
         
-        # Baustein A: Wer dominiert?
         if borough:
-            text_parts.append(f"Fokus auf **{borough}**.")
+            if isinstance(borough, list):
+                names = ", ".join(borough)
+                text_parts.append(f"Fokus auf **{names}**.")
+            else:
+                text_parts.append(f"Fokus auf **{borough}**.")
         else:
             text_parts.append(f"**{winner_borough}** ist der nachfragestärkste Bezirk.")
 
-        # Baustein B: Wann ist Peak?
         if peak_hour != "?":
-            # Kleine Logik: Ist es morgens, abends oder nachts?
             if 6 <= peak_hour < 10: time_of_day = "im morgendlichen Berufsverkehr"
             elif 16 <= peak_hour < 20: time_of_day = "zum Feierabend"
             elif 0 <= peak_hour < 5: time_of_day = "im Nachtleben"
@@ -255,8 +243,166 @@ def register_predefined_callbacks(app):
             
             text_parts.append(f"Die höchste Auslastung zeigt sich um **{peak_hour}:00 Uhr** ({time_of_day}).")
 
-        # Baustein C: Zusammenfügen
         insight_msg = " ".join(text_parts)
 
-        import dash.dcc as dcc
         return rows_boroughs, rows_hours, dcc.Markdown(insight_msg)
+
+    # ---------------------------------------------------
+    # Modal Open/Close Logic (Deep Dive 1: Peak Hours)
+    # ---------------------------------------------------
+    @app.callback(
+        Output("modal-peak-hours", "style"),
+        [Input("btn-open-modal", "n_clicks"),
+         Input("btn-close-modal", "n_clicks")],
+        [State("modal-peak-hours", "style")]
+    )
+    def toggle_modal(n_open, n_close, current_style):
+        if not n_open and not n_close:
+            return current_style 
+
+        trigger_id = ctx.triggered_id
+        if trigger_id == "btn-open-modal":
+            return {"display": "flex"} 
+        elif trigger_id == "btn-close-modal":
+            return {"display": "none"} 
+        return current_style
+
+    # ---------------------------------------------------
+    # Inhalt des Deep-Dive Modals 1 (Weekly Plot)
+    # ---------------------------------------------------
+    @app.callback(
+        Output("fig-peak-hours-deepdive", "figure"),
+        [Input("filter-taxi-type", "value"),
+         Input("filter-year", "value"),
+         Input("filter-borough", "value")]
+    )
+    def update_deepdive_chart(taxi_type, year, borough):
+        if not taxi_type: taxi_type = "ALL"
+
+        df = load_weekly_patterns(taxi_type, year, borough)
+        
+        if df.empty:
+            fig = go.Figure()
+            fig.update_layout(title="Keine Daten")
+            apply_exec_style(fig)
+            return fig
+
+        week_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        df["day_name"] = pd.Categorical(df["day_name"], categories=week_order, ordered=True)
+        df = df.sort_values(by=["day_name", "hour"])
+        
+        df["time_label"] = df["day_name"].astype(str) + " " + df["hour"].astype(str).str.zfill(2) + ":00"
+
+        color_map = {
+            "YELLOW": "#f1c40f", 
+            "GREEN": "#2ecc71",
+            "FHV": "#636e72",                 
+            "FHV - High Volume": "#636e72"    
+        }
+        taxi_stack_order = ["FHV", "FHV - High Volume", "GREEN", "YELLOW"]
+
+        fig = px.bar(
+            df, 
+            x="time_label", 
+            y="trips", 
+            color="taxi_type", 
+            category_orders={"time_label": df["time_label"].tolist(), "taxi_type": taxi_stack_order},
+            color_discrete_map=color_map
+        )
+        
+        fig.update_layout(
+            xaxis_title=None,
+            yaxis_title="Anzahl Fahrten",
+            legend_title=None,
+            xaxis=dict(tickangle=-45, nticks=20),
+            margin=dict(t=40, b=80, l=40, r=20),
+            bargap=0.0
+        )
+        
+        apply_exec_style(fig, title="Wochenverlauf (Detailansicht)")
+        return fig
+
+    # ---------------------------------------------------
+    # Modal Open/Close Logic (Deep Dive 2: Tip Behavior)
+    # ---------------------------------------------------
+    @app.callback(
+        Output("modal-tip-deepdive", "style"),
+        [Input("btn-open-modal-tip", "n_clicks"),
+         Input("btn-close-modal-tip", "n_clicks")],
+        [State("modal-tip-deepdive", "style")]
+    )
+    def toggle_modal_tip(n_open, n_close, current_style):
+        if not n_open and not n_close:
+            return current_style 
+
+        trigger_id = ctx.triggered_id
+        if trigger_id == "btn-open-modal-tip":
+            return {"display": "flex"} 
+        elif trigger_id == "btn-close-modal-tip":
+            return {"display": "none"} 
+        return current_style
+
+    # ---------------------------------------------------
+    # Inhalt des Deep-Dive Modals 2 (Tip Behavior)
+    # ---------------------------------------------------
+    @app.callback(
+        [Output("fig-tip-distribution", "figure"),
+         Output("modal-tip-zones-list", "children")],
+        [Input("filter-taxi-type", "value"),
+         Input("filter-year", "value"),
+         Input("filter-borough", "value")]
+    )
+    def update_tip_deepdive(taxi_type, year, borough):
+        if not taxi_type: taxi_type = "ALL"
+
+        # 1. Histogramm laden
+        df_dist = load_tip_distribution(taxi_type, year, borough)
+        
+        # Figure bauen
+        if df_dist.empty:
+            fig = go.Figure()
+            fig.update_layout(title="Keine Daten")
+            apply_exec_style(fig)
+        else:
+            fig = px.bar(
+                df_dist, 
+                x="tip_bin", 
+                y="trips",
+                title="Verteilung der Trinkgelder (Passenger Psychology)",
+                text_auto='.2s'
+            )
+            fig.update_layout(
+                xaxis_title="Trinkgeld Anteil (%)",
+                yaxis_title="Anzahl Fahrten",
+                bargap=0.1
+            )
+            apply_exec_style(fig)
+
+        # 2. Top Zonen laden
+        top_zones = load_top_tipping_zones(taxi_type, year, borough)
+        
+        # HTML-Liste bauen
+        if not top_zones:
+            list_html = html.P("Keine Daten verfügbar.")
+        else:
+            rows = []
+            for i, zone in enumerate(top_zones):
+                medal = "🥇 " if i==0 else ("🥈 " if i==1 else ("🥉 " if i==2 else f"{i+1}. "))
+                
+                rows.append(html.Div(
+                    className="kpi", 
+                    style={"padding": "10px", "marginBottom": "8px", "boxShadow": "none", "border": "1px solid #eee"},
+                    children=[
+                        html.Div(f"{medal}{zone['zone']}", style={"fontWeight": "600", "fontSize": "13px"}),
+                        html.Div(
+                            style={"display": "flex", "justifyContent": "space-between", "marginTop": "4px"},
+                            children=[
+                                html.Span(f"Ø {zone['weighted_tip_pct']:.1f}%", style={"color": "#16a34a", "fontWeight": "bold"}),
+                                html.Span(f"{int(zone['total_trips']):,} Trips", style={"color": "#94a3b8", "fontSize": "11px"})
+                            ]
+                        )
+                    ]
+                ))
+            list_html = html.Div(rows)
+
+        return fig, list_html

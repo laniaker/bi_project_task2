@@ -443,3 +443,48 @@ def load_airport_sunburst_data(taxi_type="ALL", year=None):
         return bq_client.query(query).to_dataframe()
     except Exception:
         return pd.DataFrame()
+    
+def load_tip_distribution(taxi_type="ALL", year=None, borough=None):
+    """ Lädt die Histogramm-Daten für den Tip Deep Dive. """
+    if not bq_client: return pd.DataFrame()
+
+    filters = ["1=1"]
+    filters.append(_build_sql_condition("taxi_type", taxi_type, is_string=True))
+    filters.append(_build_sql_condition("year", year, is_string=False))
+    filters.append(_build_sql_condition("borough", borough, is_string=True))
+
+    sql = f"""
+        SELECT tip_bin, bin_order, SUM(trip_count) as trips
+        FROM `taxi-bi-project.aggregational.agg_tip_distribution`
+        WHERE {" AND ".join(filters)}
+        GROUP BY 1, 2
+        ORDER BY bin_order
+    """
+    try:
+        return bq_client.query(sql).to_dataframe()
+    except Exception:
+        return pd.DataFrame()
+
+def load_top_tipping_zones(taxi_type="ALL", year=None, borough=None):
+    """ Lädt die Top 10 Zonen mit dem höchsten Tip % für die Sidebar. """
+    if not bq_client: return []
+
+    filters = ["1=1"]
+    filters.append(_build_sql_condition("taxi_type", taxi_type, is_string=True))
+    filters.append(_build_sql_condition("year", year, is_string=False))
+    filters.append(_build_sql_condition("borough", borough, is_string=True))
+
+    sql = f"""
+        SELECT zone, SUM(trips) as total_trips, 
+               SAFE_DIVIDE(SUM(avg_tip_pct * trips), SUM(trips)) as weighted_tip_pct
+        FROM `taxi-bi-project.aggregational.agg_tip_zone_ranking`
+        WHERE {" AND ".join(filters)}
+        GROUP BY 1
+        HAVING total_trips > 500
+        ORDER BY weighted_tip_pct DESC
+        LIMIT 10
+    """
+    try:
+        return bq_client.query(sql).to_dataframe().to_dict('records')
+    except Exception:
+        return []

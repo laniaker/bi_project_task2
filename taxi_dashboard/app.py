@@ -35,6 +35,7 @@ app = Dash(
 def sidebar_filters():
     """
     Linke Filter-Sidebar (Taxi-Typ, Jahr, Borough).
+    Jetzt mit Multi-Select Unterstützung!
     """
     return html.Div(
         className="card",
@@ -49,15 +50,12 @@ def sidebar_filters():
                             html.Div("Taxi-Typ", className="filter-label"),
                             dcc.Dropdown(
                                 id="filter-taxi-type",
-                                options=[
-                                    {"label": "Alle", "value": "ALL"},
-                                    {"label": "Green", "value": "GREEN"},
-                                    {"label": "Yellow", "value": "YELLOW"},
-                                    {"label": "FHV", "value": "FHV"},
-                                ],
-                                value=["ALL"], # WICHTIG: Liste als Default
-                                multi=True,    # Erlaubt Mehrfachauswahl
-                                clearable=False,
+                                options=[], # Wird vom Callback gefüllt
+                                value=[], 
+                                placeholder="Alle Taxi-Typen",
+                                
+                                multi=True,    
+                                clearable=True, 
                             ),
                         ]
                     ),
@@ -70,7 +68,7 @@ def sidebar_filters():
                                 options=[], 
                                 value=[],      # Leer = Alle Jahre
                                 placeholder="Alle Jahre",
-                                multi=True,    # Erlaubt Mehrfachauswahl
+                                multi=True,    
                                 clearable=True,
                             ),
                         ]
@@ -84,7 +82,7 @@ def sidebar_filters():
                                 options=[], 
                                 value=[],      # Leer = Alle Boroughs
                                 placeholder="Alle Boroughs",
-                                multi=True,    # Erlaubt Mehrfachauswahl
+                                multi=True,    
                                 clearable=True,
                             ),
                         ]
