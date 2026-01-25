@@ -35,7 +35,6 @@ app = Dash(
 def sidebar_filters():
     """
     Linke Filter-Sidebar (Taxi-Typ, Jahr, Borough).
-    Year/Borough-Optionen werden per Callback dynamisch befüllt.
     """
     return html.Div(
         className="card",
@@ -44,7 +43,7 @@ def sidebar_filters():
             html.Div(
                 className="filters",
                 children=[
-                    # Taxi-Typ (fixe Optionsliste)
+                    # Taxi-Typ (Multi-Select)
                     html.Div(
                         [
                             html.Div("Taxi-Typ", className="filter-label"),
@@ -56,33 +55,36 @@ def sidebar_filters():
                                     {"label": "Yellow", "value": "YELLOW"},
                                     {"label": "FHV", "value": "FHV"},
                                 ],
-                                value="ALL",
+                                value=["ALL"], # WICHTIG: Liste als Default
+                                multi=True,    # Erlaubt Mehrfachauswahl
                                 clearable=False,
                             ),
                         ]
                     ),
-                    # Jahr (Optionen kommen aus der Datenbasis)
+                    # Jahr (Multi-Select)
                     html.Div(
                         [
                             html.Div("Jahr", className="filter-label"),
                             dcc.Dropdown(
                                 id="filter-year",
-                                options=[],  # wird in predefined_callbacks initialisiert
-                                value=None,
+                                options=[], 
+                                value=[],      # Leer = Alle Jahre
                                 placeholder="Alle Jahre",
+                                multi=True,    # Erlaubt Mehrfachauswahl
                                 clearable=True,
                             ),
                         ]
                     ),
-                    # Pickup Borough (Optionen kommen aus der Datenbasis)
+                    # Borough (Multi-Select)
                     html.Div(
                         [
                             html.Div("Borough (Pickup)", className="filter-label"),
                             dcc.Dropdown(
                                 id="filter-borough",
-                                options=[],  # wird in predefined_callbacks initialisiert
-                                value=None,
+                                options=[], 
+                                value=[],      # Leer = Alle Boroughs
                                 placeholder="Alle Boroughs",
+                                multi=True,    # Erlaubt Mehrfachauswahl
                                 clearable=True,
                             ),
                         ]
