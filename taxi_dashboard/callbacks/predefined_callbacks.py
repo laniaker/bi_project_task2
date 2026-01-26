@@ -1,4 +1,4 @@
-from dash import Input, Output, State, html, dcc, ctx
+from dash import Input, Output, State, html, dcc, ctx, no_update
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
@@ -6,7 +6,7 @@ import pandas as pd
 # Einheitliches Styling für alle Visuals
 from utils.plot_style import apply_exec_style
 
-# Datenzugriff
+# Datenzugriff - Importiert aus utils.data_access
 from utils.data_access import (
     get_filter_options,
     load_peak_hours,
@@ -16,18 +16,21 @@ from utils.data_access import (
     get_kpi_data,
     get_top_boroughs,
     get_top_hours,
-    load_weekly_patterns,      
+    load_weekly_patterns,     
     load_tip_distribution,     
-    load_top_tipping_zones     
+    load_top_tipping_zones,
+    load_seasonality_data,
+    load_market_share_trend,
+    load_top_routes
 )
 
 def register_predefined_callbacks(app):
     """
     Registriert alle Callbacks für den 'Predefined'-Tab.
-    Zuständig für die Interaktivität der Standard-Charts und der Deep Dive Modals.
+    Zuständig für die Interaktivität der Standard-Charts und der 3 Deep Dive Modals.
     """
 
-# ---------------------------------------------------
+    # ---------------------------------------------------
     # Initialisierung der Filteroptionen
     # ---------------------------------------------------
     @app.callback(
@@ -152,7 +155,7 @@ def register_predefined_callbacks(app):
         return fig
     
     # ---------------------------------------------------
-    # KPI-Update (Obere Leiste & Deep Dive Modal)
+    # KPI-Update (Obere Leiste)
     # ---------------------------------------------------
     @app.callback(
         [
@@ -247,36 +250,44 @@ def register_predefined_callbacks(app):
 
         return rows_boroughs, rows_hours, dcc.Markdown(insight_msg)
 
-    # ---------------------------------------------------
-    # Modal Open/Close Logic (Deep Dive 1: Peak Hours)
-    # ---------------------------------------------------
+    # ===================================================
+    # DEEP DIVE 1: PEAK HOURS (Weekly Patterns)
+    # ===================================================
+    
+    # Toggle Logic
     @app.callback(
         Output("modal-peak-hours", "style"),
         [Input("btn-open-modal", "n_clicks"),
          Input("btn-close-modal", "n_clicks")],
         [State("modal-peak-hours", "style")]
     )
-    def toggle_modal(n_open, n_close, current_style):
+    def toggle_modal_peak(n_open, n_close, current_style):
         if not n_open and not n_close:
             return current_style 
-
+        
         trigger_id = ctx.triggered_id
         if trigger_id == "btn-open-modal":
             return {"display": "flex"} 
         elif trigger_id == "btn-close-modal":
-            return {"display": "none"} 
+            return {"display": "none"}
+            
         return current_style
 
-    # ---------------------------------------------------
-    # Inhalt des Deep-Dive Modals 1 (Weekly Plot)
-    # ---------------------------------------------------
+    # Content Update
     @app.callback(
         Output("fig-peak-hours-deepdive", "figure"),
         [Input("filter-taxi-type", "value"),
          Input("filter-year", "value"),
-         Input("filter-borough", "value")]
+         Input("filter-borough", "value"),
+         Input("btn-open-modal", "n_clicks")],
+        [State("modal-peak-hours", "style")]
     )
-    def update_deepdive_chart(taxi_type, year, borough):
+    def update_peak_deepdive(taxi_type, year, borough, n_clicks, modal_style):
+        # Lazy Loading Check
+        is_open = modal_style and modal_style.get("display") == "flex"
+        if ctx.triggered_id != "btn-open-modal" and not is_open:
+            return no_update
+
         if not taxi_type: taxi_type = "ALL"
 
         df = load_weekly_patterns(taxi_type, year, borough)
@@ -321,10 +332,109 @@ def register_predefined_callbacks(app):
         
         apply_exec_style(fig, title="Wochenverlauf (Detailansicht)")
         return fig
+    
+    # ===================================================
+    # DEEP DIVE 2: FARE ANALYSIS (Routes)
+    # ===================================================
 
-    # ---------------------------------------------------
-    # Modal Open/Close Logic (Deep Dive 2: Tip Behavior)
-    # ---------------------------------------------------
+    # Toggle Logic
+    @app.callback(
+        Output("modal-fare-deepdive", "style"),
+        [Input("btn-open-modal-fare", "n_clicks"),
+         Input("btn-close-modal-fare", "n_clicks")],
+        [State("modal-fare-deepdive", "style")]
+    )
+    def toggle_modal_fare(n_open, n_close, current_style):
+        if not n_open and not n_close:
+            return current_style 
+        
+        trigger_id = ctx.triggered_id
+        if trigger_id == "btn-open-modal-fare":
+            return {"display": "flex"} 
+        elif trigger_id == "btn-close-modal-fare":
+            return {"display": "none"}
+            
+        return current_style
+
+    # Content Update
+    @app.callback(
+        [Output("fig-fare-routes", "figure"),
+         Output("modal-fare-stats", "children")],
+        [Input("filter-taxi-type", "value"),
+         Input("filter-year", "value"),
+         Input("filter-borough", "value"),
+         Input("btn-open-modal-fare", "n_clicks")],
+        [State("modal-fare-deepdive", "style")]
+    )
+    def update_fare_deepdive(taxi_type, year, borough, n_clicks, modal_style):
+        # Lazy Loading
+        is_open = modal_style and modal_style.get("display") == "flex"
+        if ctx.triggered_id != "btn-open-modal-fare" and not is_open:
+            return no_update, no_update
+
+        if not taxi_type: taxi_type = "ALL"
+
+        # Daten laden
+        df = load_top_routes(taxi_type, year, borough)
+        
+        if df.empty:
+            fig = go.Figure()
+            apply_exec_style(fig, title="Keine Daten")
+            return fig, html.P("Keine Daten.")
+
+        # Plot: Horizontales Balkendiagramm für Routen
+        df["route_label"] = df["pickup_borough"] + " → " + df["dropoff_borough"]
+        
+        fig = px.bar(
+            df,
+            x="revenue",
+            y="route_label",
+            orientation='h',
+            text="avg_fare", # Zeigt Durchschnittspreis im Balken
+            color="revenue",
+            color_continuous_scale="Blues"
+        )
+        
+        # Text formatieren (Avg Fare)
+        fig.update_traces(texttemplate='$%{text:.2f}', textposition='inside')
+        
+        fig.update_layout(
+            xaxis_title="Gesamtumsatz ($)",
+            yaxis_title=None,
+            yaxis={'categoryorder':'total ascending'} 
+        )
+        apply_exec_style(fig, title="Top 10 Routen nach Umsatz")
+
+        # Stats Sidebar
+        top_route = df.iloc[0]
+        stats_html = html.Div([
+            html.Div(
+                className="kpi",
+                style={"marginBottom": "10px"},
+                children=[
+                    html.P("Top Route (Umsatz)", className="kpi-title"),
+                    html.H3(f"{top_route['route_label']}", style={"fontSize": "16px", "margin": "5px 0"}),
+                    html.P(f"${top_route['revenue']:,.0f}", className="kpi-value", style={"color": "var(--primary)"})
+                ]
+            ),
+             html.Div(
+                className="kpi",
+                children=[
+                    html.P("Durchschnittspreis Top Route", className="kpi-title"),
+                    html.H3(f"${top_route['avg_fare']:.2f}", className="kpi-value")
+                ]
+            ),
+            html.P("Der Chart zeigt, welche Borough-Verbindungen das meiste Geld einbringen. Der Wert im Balken ist der Ø Fahrpreis pro Trip.", 
+                   style={"fontSize": "12px", "color": "var(--muted)", "marginTop": "20px"})
+        ])
+
+        return fig, stats_html
+
+    # ===================================================
+    # DEEP DIVE 3: TIPS (Distribution & Zones)
+    # ===================================================
+
+    # Toggle Logic
     @app.callback(
         Output("modal-tip-deepdive", "style"),
         [Input("btn-open-modal-tip", "n_clicks"),
@@ -334,31 +444,35 @@ def register_predefined_callbacks(app):
     def toggle_modal_tip(n_open, n_close, current_style):
         if not n_open and not n_close:
             return current_style 
-
+        
         trigger_id = ctx.triggered_id
         if trigger_id == "btn-open-modal-tip":
             return {"display": "flex"} 
         elif trigger_id == "btn-close-modal-tip":
-            return {"display": "none"} 
+            return {"display": "none"}
+            
         return current_style
 
-    # ---------------------------------------------------
-    # Inhalt des Deep-Dive Modals 2 (Tip Behavior)
-    # ---------------------------------------------------
+    # Content Update
     @app.callback(
         [Output("fig-tip-distribution", "figure"),
          Output("modal-tip-zones-list", "children")],
         [Input("filter-taxi-type", "value"),
          Input("filter-year", "value"),
-         Input("filter-borough", "value")]
+         Input("filter-borough", "value"),
+         Input("btn-open-modal-tip", "n_clicks")],
+        [State("modal-tip-deepdive", "style")]
     )
-    def update_tip_deepdive(taxi_type, year, borough):
+    def update_tip_deepdive(taxi_type, year, borough, n_clicks, modal_style):
+        is_open = modal_style and modal_style.get("display") == "flex"
+        if ctx.triggered_id != "btn-open-modal-tip" and not is_open:
+            return no_update, no_update
+
         if not taxi_type: taxi_type = "ALL"
 
         # 1. Histogramm laden
         df_dist = load_tip_distribution(taxi_type, year, borough)
         
-        # Figure bauen
         if df_dist.empty:
             fig = go.Figure()
             fig.update_layout(title="Keine Daten")
@@ -381,7 +495,6 @@ def register_predefined_callbacks(app):
         # 2. Top Zonen laden
         top_zones = load_top_tipping_zones(taxi_type, year, borough)
         
-        # HTML-Liste bauen
         if not top_zones:
             list_html = html.P("Keine Daten verfügbar.")
         else:
@@ -406,3 +519,101 @@ def register_predefined_callbacks(app):
             list_html = html.Div(rows)
 
         return fig, list_html
+
+    # ===================================================
+    # DEEP DIVE 4: DEMAND SHIFT (Market Evolution)
+    # ===================================================
+
+    # Toggle Logic
+    @app.callback(
+        Output("modal-demand-deepdive", "style"),
+        [Input("btn-open-modal-demand", "n_clicks"),
+         Input("btn-close-modal-demand", "n_clicks")],
+        [State("modal-demand-deepdive", "style")]
+    )
+    def toggle_modal_demand(n_open, n_close, current_style):
+        if not n_open and not n_close:
+            return current_style 
+        
+        trigger_id = ctx.triggered_id
+        if trigger_id == "btn-open-modal-demand":
+            return {"display": "flex"} 
+        elif trigger_id == "btn-close-modal-demand":
+            return {"display": "none"}
+            
+        return current_style
+
+    # Content Update
+    @app.callback(
+        [Output("fig-monthly-seasonality", "figure"),
+         Output("fig-taxi-war", "figure"),
+         Output("modal-demand-stats", "children")],
+        [Input("filter-taxi-type", "value"),
+         Input("filter-borough", "value"),
+         Input("filter-year", "value"),
+         Input("btn-open-modal-demand", "n_clicks")],
+        [State("modal-demand-deepdive", "style")]
+    )
+    def update_demand_deepdive(taxi_type, borough, year, n_clicks, modal_style):
+        is_open = modal_style and modal_style.get("display") == "flex"
+        if ctx.triggered_id != "btn-open-modal-demand" and not is_open:
+            return no_update, no_update, no_update
+
+        if not taxi_type: taxi_type = "ALL"
+
+        # --- Chart 1: Seasonality ---
+        df_seas = load_seasonality_data(taxi_type, borough, year)
+        
+        if df_seas.empty:
+            fig_seas = go.Figure()
+            apply_exec_style(fig_seas, title="Keine Daten")
+        else:
+            fig_seas = px.line(
+                df_seas, 
+                x="month_name", 
+                y="trips", 
+                color="year", 
+                markers=True,
+                category_orders={"month_name": ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]}
+            )
+            fig_seas.update_layout(xaxis_title="Monat", yaxis_title="Anzahl Fahrten")
+            
+            # Dynamischer Titel
+            year_title = "Alle Jahre"
+            if year:
+                if isinstance(year, list):
+                    year_title = ", ".join(map(str, year))
+                else:
+                    year_title = str(year)
+                    
+            apply_exec_style(fig_seas, title=f"Saisonalität ({year_title})")
+
+        # --- Chart 2: Taxi War ---
+        df_war = load_market_share_trend(borough)
+        
+        if df_war.empty:
+            fig_war = go.Figure()
+            apply_exec_style(fig_war, title="Keine Daten")
+        else:
+            color_map = {"YELLOW": "#f1c40f", "GREEN": "#2ecc71", "FHV": "#636e72", "FHV - High Volume": "#2d3436"}
+            fig_war = px.area(
+                df_war, 
+                x="year", 
+                y="trips", 
+                color="taxi_type", 
+                color_discrete_map=color_map
+            )
+            fig_war.update_layout(xaxis_title="Jahr", yaxis_title="Marktanteile (Trips)")
+            apply_exec_style(fig_war, title=f"Marktentwicklung ({borough if borough else 'NYC Gesamt'})")
+
+        # --- Stats Text ---
+        stats_html = html.Div([
+            html.P("Analyse:", style={"fontWeight": "bold", "marginBottom": "5px"}),
+            html.Ul([
+                html.Li(f"Oben: Saisonaler Verlauf für die gewählten Jahre ({year_title})."),
+                html.Li(f"Unten: Langfristige Verdrängung im Gebiet '{borough if borough else 'NYC (Gesamt)'}'."),
+                html.Li("FHV (Uber/Lyft) sind jetzt vollständig enthalten.")
+            ], style={"fontSize": "12px", "paddingLeft": "15px", "color": "var(--text)"})
+        ])
+
+        return fig_seas, fig_war, stats_html

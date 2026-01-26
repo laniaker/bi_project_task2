@@ -399,9 +399,7 @@ def load_quality_audit(taxi_type="ALL", year=None):
     if not bq_client: return pd.DataFrame()
     
     filters = ["1=1"]
-    # Achtung: Feld heißt source_system
     filters.append(_build_sql_condition("source_system", taxi_type, is_string=True))
-    # Jahr aus Datum extrahieren
     filters.append(_build_sql_condition("EXTRACT(YEAR FROM month)", year, is_string=False))
     
     sql = f"""
@@ -488,3 +486,148 @@ def load_top_tipping_zones(taxi_type="ALL", year=None, borough=None):
         return bq_client.query(sql).to_dataframe().to_dict('records')
     except Exception:
         return []
+
+def load_seasonality_data(taxi_type="ALL", borough=None, year=None):
+    """ 
+    Lädt monatliche Daten für Saisonalität.
+    UPDATE: Akzeptiert jetzt 'year' für den Filter!
+    """
+    if not bq_client: return pd.DataFrame()
+
+    filters = ["1=1"]
+    filters.append(_build_sql_condition("taxi_type", taxi_type, is_string=True))
+    filters.append(_build_sql_condition("borough", borough, is_string=True))
+    filters.append(_build_sql_condition("year", year, is_string=False)) 
+    
+    sql = f"""
+        SELECT year, month, month_name, SUM(total_trips) as trips
+        FROM `taxi-bi-project.aggregational.agg_seasonality_borough`
+        WHERE {" AND ".join(filters)}
+        GROUP BY 1, 2, 3
+        ORDER BY year, month
+    """
+    try:
+        return bq_client.query(sql).to_dataframe()
+    except Exception:
+        return pd.DataFrame()
+
+def load_market_share_trend(borough=None):
+    """ 
+    Lädt Daten für Marktanteile. 
+    Ignoriert Taxi-Typ und Jahr bewusst, um immer den vollen Trend zu zeigen 
+    (außer du willst das Jahr hier auch filtern, aber für Trends macht "alles" meist mehr Sinn).
+    """
+    if not bq_client: return pd.DataFrame()
+
+    filters = ["1=1"]
+    filters.append(_build_sql_condition("borough", borough, is_string=True))
+    
+    sql = f"""
+        SELECT year, taxi_type, SUM(total_trips) as trips
+        FROM `taxi-bi-project.aggregational.agg_seasonality_borough`
+        WHERE {" AND ".join(filters)}
+        GROUP BY 1, 2
+        ORDER BY year
+    """
+    try:
+        return bq_client.query(sql).to_dataframe()
+    except Exception:
+        return pd.DataFrame()
+    
+def load_agg_dist_dist(taxi_type="ALL", year=None, borough=None):
+    """
+    Lädt Daten für das Distanz-Histogramm (Creative Tab).
+    """
+    if not bq_client: return pd.DataFrame()
+
+    filters = ["1=1"]
+    filters.append(_build_sql_condition("taxi_type", taxi_type, is_string=True))
+    filters.append(_build_sql_condition("year", year, is_string=False))
+    filters.append(_build_sql_condition("borough", borough, is_string=True))
+
+    sql = f"""
+        SELECT dist_bin, sort_order, SUM(trip_count) as trips
+        FROM `taxi-bi-project.aggregational.agg_distance_distribution`
+        WHERE {" AND ".join(filters)}
+        GROUP BY 1, 2
+        ORDER BY sort_order
+    """
+    try:
+        return bq_client.query(sql).to_dataframe()
+    except Exception:
+        return pd.DataFrame()
+
+def load_scatter_sample(taxi_type="ALL", year=None, borough=None, limit=2000):
+    """
+    Lädt ein Zufallssample für den Scatter-Plot (Creative Tab).
+    Greift direkt auf die Fact-Tabelle zu.
+    """
+    if not bq_client: return pd.DataFrame()
+
+    filters = ["1=1"]
+    filters.append(_build_sql_condition("source_system", taxi_type, is_string=True))
+    filters.append(_build_sql_condition("EXTRACT(YEAR FROM pickup_datetime)", year, is_string=False))
+    
+    sql = f"""
+        SELECT trip_distance, fare_amount, tip_amount, total_amount, source_system as taxi_type
+        FROM `taxi-bi-project.dimensional.Fact_Trips`
+        WHERE {" AND ".join(filters)}
+          AND trip_distance > 0 AND fare_amount > 0 AND total_amount > 0
+          AND RAND() < 0.005
+        LIMIT {limit}
+    """
+    try:
+        return bq_client.query(sql).to_dataframe()
+    except Exception:
+        return pd.DataFrame()
+
+def load_map_data(taxi_type="ALL", year=None):
+    """
+    Lädt aggregierte Daten für die Choropleth-Karte (Location Tab).
+    Falls 'load_trips_and_geometries' zu komplex ist, wird oft diese Funktion genutzt.
+    """
+    if not bq_client: return pd.DataFrame()
+    
+    filters = ["1=1"]
+    filters.append(_build_sql_condition("taxi_type", taxi_type, is_string=True))
+    filters.append(_build_sql_condition("year", year, is_string=False))
+
+    sql = f"""
+        SELECT pickup_location_id, SUM(total_trips) as trips, AVG(avg_fare) as avg_fare
+        FROM `taxi-bi-project.aggregational.agg_kpis_main` 
+        WHERE {" AND ".join(filters)}
+        GROUP BY 1
+    """
+    try:
+        return bq_client.query(sql).to_dataframe()
+    except Exception:
+        return pd.DataFrame()
+    
+def load_top_routes(taxi_type="ALL", year=None, borough=None):
+    """
+    Lädt die umsatzstärksten Routen (Pickup -> Dropoff).
+    """
+    if not bq_client: return pd.DataFrame()
+
+    filters = ["1=1"]
+    filters.append(_build_sql_condition("taxi_type", taxi_type, is_string=True))
+    filters.append(_build_sql_condition("year", year, is_string=False))
+    filters.append(_build_sql_condition("pickup_borough", borough, is_string=True))
+    
+    sql = f"""
+        SELECT 
+            pickup_borough, 
+            dropoff_borough,
+            SUM(total_revenue) as revenue,
+            SUM(total_trips) as trips,
+            SAFE_DIVIDE(SUM(total_revenue), SUM(total_trips)) as avg_fare
+        FROM `taxi-bi-project.aggregational.agg_route_revenues`
+        WHERE {" AND ".join(filters)}
+        GROUP BY 1, 2
+        ORDER BY revenue DESC
+        LIMIT 10
+    """
+    try:
+        return bq_client.query(sql).to_dataframe()
+    except Exception:
+        return pd.DataFrame()

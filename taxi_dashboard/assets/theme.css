@@ -87,7 +87,9 @@ html, body {
   grid-column: 2 / span 3;
   width: 100%;
   min-width: 0;
-  position: relative;
+  
+  /* WICHTIG: Anchor für das Modal Overlay */
+  position: relative; 
   z-index: 1;
 }
 
@@ -138,10 +140,10 @@ html, body {
   gap: var(--gap);
   margin-bottom: 14px;
   
-  /* Z-Index Management: KPIs liegen über dem Modal-Overlay (z-index: 50) */
   position: relative; 
-  z-index: 60; 
-  pointer-events: none; /* Klicks auf Wrapper ignorieren */
+  /* Z-Index so gewählt, dass Modal (1000) sicher darüber liegt */
+  z-index: 10; 
+  pointer-events: none; 
 }
 
 .kpi {
@@ -152,7 +154,7 @@ html, body {
   box-shadow: var(--shadow);
   position: relative;
   overflow: hidden;
-  pointer-events: auto; /* Interaktion für einzelne KPI-Cards aktivieren */
+  pointer-events: auto; 
 }
 
 /* Status-Indikator (Border-Left) */
@@ -265,115 +267,135 @@ html, body {
 }
 
 /* ==========================================================================
-   Modal & Overlay System
+   Modal & Overlay System (Deep Dive)
    ========================================================================== */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw; 
-  height: 100vh;
-  
-  /* Layout-Verschiebung: Overlay beginnt rechts neben der Sidebar */
-  padding-left: 25%; 
-  box-sizing: border-box;
-  
-  /* Backdrop Styles */
-  background-color: rgba(2, 6, 23, 0.6); 
-  -webkit-backdrop-filter: blur(3px);
-  backdrop-filter: blur(3px);
-  
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 50; 
-  padding-right: 20px;
-}
-
-.modal-card-extended {
-  width: 100%;
-  max-width: 1300px;
-  
-  /* Viewport-relative Höhe (Widescreen Format) */
-  height: 50vh;      
-  min-height: 420px;
-  
-  padding: 0 !important;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35) !important;
-}
-
-/* --- Modal Inner Layout --- */
-.modal-header-extended {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  padding: 16px 24px;
-  border-bottom: 1px solid var(--border);
-  background: var(--card);
-}
-
-.modal-header-extended h3 {
-    margin: 0;
-    font-size: 16px; 
-}
-
-.modal-header-extended p {
-    margin: 2px 0 0 0;
-    font-size: 12px;
-}
-
-.modal-body-grid {
-  display: grid;
-  grid-template-columns: 1fr 280px; 
-  flex: 1;       
-  min-height: 0; 
-  background: var(--bg);
-  overflow: hidden; 
-}
-
-.modal-chart-container {
-  padding: 16px;
-  background: var(--card);
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-}
-
-.modal-chart-container .js-plotly-plot {
-    flex: 1;
-}
-
-.modal-stats-sidebar {
-  padding: 16px;
-  background: var(--bg);
-  overflow-y: auto;
-}
-
-/* ==========================================================================
-   Responsive Breakpoints
-   ========================================================================== */
-@media (max-width: 1200px) {
-  .modal-overlay {
-    padding-left: 0;
-    padding-right: 0;
-    z-index: 10000;
-    background-color: rgba(2, 6, 23, 0.85); 
+   .modal-overlay {
+    position: absolute; 
+    top: 0;
+    left: 0;
+    width: 100%; 
+    height: 100%; 
+    padding: 0; 
+    padding-top: 10px; 
+    background-color: rgba(243, 245, 249, 0.98); 
+    -webkit-backdrop-filter: blur(5px);
+    backdrop-filter: blur(5px);
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    z-index: 1000; 
   }
   
-  /* Erhöhung der Modal-Höhe auf Touch-Devices für bessere Lesbarkeit */
   .modal-card-extended {
-      height: 70vh; 
+    width: 100%; 
+    max-width: none;
+    height: 100%;
+    padding: 0 !important;
+    display: flex;
+    flex-direction: column;
+    box-shadow: none !important; 
+    border: 1px solid var(--border);
+    /* Hintergrund weiß für Header, aber Body ist geteilt */
+    background: var(--card);
+  }
+  
+  /* --- Modal Inner Layout --- */
+  .modal-header-extended {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--card);
+    flex: 0 0 auto; /* Header wächst nicht */
+  }
+  
+  .modal-header-extended h3 {
+      margin: 0;
+      font-size: 16px; 
+  }
+  
+  .modal-header-extended p {
+      margin: 2px 0 0 0;
+      font-size: 12px;
   }
   
   .modal-body-grid {
-    grid-template-columns: 1fr;
-    grid-template-rows: 1fr auto;
+    display: grid;
+    grid-template-columns: 1fr 280px; 
+    flex: 1;       
+    min-height: 0; 
+    background: var(--bg); /* Hintergrund Grau */
+    overflow: hidden; 
   }
   
+  /* Linke Seite: Container für die Plots */
   .modal-chart-container {
-      border-right: none;
-      border-bottom: 1px solid var(--border);
+    padding: 16px;
+    /* Hintergrund Grau (var(--bg)) statt Weiß, damit die Cards wirken */
+    background: var(--bg); 
+    border-right: 1px solid var(--border);
+    
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start; 
+    gap: 16px; /* Abstand zwischen den Cards */
+    
+    overflow-y: auto; 
+    height: 100%;
   }
-}
+  
+  /* Damit die Cards im Deep Dive nicht 100% Höhe erzwingen, sondern sich anpassen */
+  .modal-chart-container .card {
+      flex: 0 0 auto; /* Schrumpft auf Inhaltshöhe */
+      width: 100%;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); /* Leichter Schatten */
+  }
+  
+  /* Rechte Seite: Sidebar */
+  .modal-stats-sidebar {
+    padding: 16px;
+    background: var(--card); /* Sidebar wieder Weiß für Kontrast */
+    
+    /* Scrollbar aktivieren, damit die Top Zones Liste scrollt */
+    overflow-y: auto; 
+    height: 100%;
+    border-left: 1px solid var(--border);
+  }
+  
+  /* ==========================================================================
+     Scrollbar Styling (Webkit)
+     ========================================================================== */
+  .modal-chart-container::-webkit-scrollbar,
+  .modal-stats-sidebar::-webkit-scrollbar {
+    width: 8px;
+  }
+  .modal-chart-container::-webkit-scrollbar-track,
+  .modal-stats-sidebar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .modal-chart-container::-webkit-scrollbar-thumb,
+  .modal-stats-sidebar::-webkit-scrollbar-thumb {
+    background-color: #cbd5e1;
+    border-radius: 4px;
+  }
+  
+  /* ==========================================================================
+     Responsive Breakpoints
+     ========================================================================== */
+  @media (max-width: 1200px) {
+    .modal-body-grid {
+      grid-template-columns: 1fr;
+      grid-template-rows: 1fr auto; /* Stacked Layout auf kleinen Screens */
+    }
+    
+    .modal-chart-container {
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+    }
+    
+    .modal-stats-sidebar {
+        border-left: none;
+        max-height: 300px; /* Sidebar begrenzen auf Mobile */
+    }
+  }

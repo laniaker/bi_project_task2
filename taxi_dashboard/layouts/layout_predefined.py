@@ -1,6 +1,7 @@
 from dash import dcc, html
 
 def _card(title, graph_id, subtitle=None, extra_header_content=None):
+    """ Standard-Card Komponente """
     header_children = [
         html.Div([
             html.H3(title),
@@ -26,7 +27,7 @@ def _card(title, graph_id, subtitle=None, extra_header_content=None):
         ],
     )
 
-# --- MODAL 1: PEAK HOURS ---
+# --- MODAL 1: PEAK HOURS (DEEP DIVE) ---
 def _modal_overlay_peak():
     return html.Div(
         id="modal-peak-hours",
@@ -39,8 +40,45 @@ def _modal_overlay_peak():
                     html.Div(
                         className="card-head modal-header-extended",
                         children=[
-                            html.Div([html.H3("Weekly Traffic Analysis (Deep Dive)"), html.P("Detaillierte Wochenansicht.")]),
+                            html.Div([html.H3("Weekly Traffic Analysis"), html.P("Detaillierte Wochenansicht.")]),
                             html.Button("✕", id="btn-close-modal", className="btn-icon-round btn-close-round"),
+                        ]
+                    ),
+                    html.Div(
+                        className="modal-body-grid",
+                        children=[
+                            html.Div(className="modal-chart-container", children=[
+                                html.Div(className="card", children=[
+                                    html.Div(className="card-head", children=[html.H3("Wochenverlauf"), html.P("Aufschlüsselung nach Zeit.")]),
+                                    dcc.Graph(id="fig-peak-hours-deepdive", style={"height": "340px"}, config={"displayModeBar": False})
+                                ]),
+                            ]),
+                            html.Div(className="modal-stats-sidebar", children=[html.H4("Insights"), html.Div(id="modal-extra-stats")])
+                        ]
+                    )
+                ]
+            )
+        ]
+    )
+
+# --- MODAL 2: FARE ANALYSIS (DEEP DIVE) ---
+def _modal_overlay_fare():
+    return html.Div(
+        id="modal-fare-deepdive",
+        className="modal-overlay",
+        style={"display": "none"}, 
+        children=[
+            html.Div(
+                className="card modal-card-extended",
+                children=[
+                    html.Div(
+                        className="card-head modal-header-extended",
+                        children=[
+                            html.Div([
+                                html.H3("Revenue & Route Analysis"), 
+                                html.P("Woher kommt der Umsatz? Top-Routen und Durchschnittspreise.")
+                            ]),
+                            html.Button("✕", id="btn-close-modal-fare", className="btn-icon-round btn-close-round"),
                         ]
                     ),
                     html.Div(
@@ -48,14 +86,25 @@ def _modal_overlay_peak():
                         children=[
                             html.Div(
                                 className="modal-chart-container",
-                                children=[dcc.Graph(id="fig-peak-hours-deepdive", style={"height": "100%"}, config={"displayModeBar": False})]
+                                children=[
+                                    # Plot 1: Top Routes
+                                    html.Div(
+                                        className="card",
+                                        children=[
+                                            html.Div(className="card-head", children=[
+                                                html.H3("Top Revenue Routes"),
+                                                html.P("Welche Verbindungen generieren den meisten Umsatz?")
+                                            ]),
+                                            dcc.Graph(id="fig-fare-routes", style={"height": "340px"}, config={"displayModeBar": False})
+                                        ]
+                                    ),
+                                ]
                             ),
                             html.Div(
                                 className="modal-stats-sidebar",
                                 children=[
-                                    html.H4("Insights", className="section-title"),
-                                    html.P("Nutze die Filter links.", style={"color": "var(--muted)", "fontSize": "13px"}),
-                                    html.Div(id="modal-extra-stats")
+                                    html.H4("Route Insights", className="section-title"),
+                                    html.Div(id="modal-fare-stats")
                                 ]
                             )
                         ]
@@ -65,7 +114,7 @@ def _modal_overlay_peak():
         ]
     )
 
-# --- MODAL 2: TIP BEHAVIOR ---
+# --- MODAL 3: TIP BEHAVIOR (DEEP DIVE) ---
 def _modal_overlay_tip():
     return html.Div(
         id="modal-tip-deepdive",
@@ -78,36 +127,58 @@ def _modal_overlay_tip():
                     html.Div(
                         className="card-head modal-header-extended",
                         children=[
-                            html.Div([
-                                html.H3("Passenger Tipping Behavior"),
-                                html.P("Verteilung der Trinkgelder & Top-Zonen (Kreditkarte)."),
-                            ]),
+                            html.Div([html.H3("Passenger Tipping Behavior"), html.P("Trinkgeld-Verteilung.")]),
                             html.Button("✕", id="btn-close-modal-tip", className="btn-icon-round btn-close-round"),
                         ]
                     ),
                     html.Div(
                         className="modal-body-grid",
                         children=[
-                            # Links: Das Histogramm
-                            html.Div(
-                                className="modal-chart-container",
-                                children=[
-                                    dcc.Graph(
-                                        id="fig-tip-distribution", 
-                                        style={"height": "100%"}, 
-                                        config={"displayModeBar": False}
-                                    )
-                                ]
-                            ),
-                            # Rechts: Top Tipping Zones Liste
-                            html.Div(
-                                className="modal-stats-sidebar",
-                                children=[
-                                    html.H4("Top Tipping Zones", className="section-title"),
-                                    html.P("Wo sind Passagiere am großzügigsten?", style={"color": "var(--muted)", "fontSize": "12px", "marginBottom": "15px"}),
-                                    html.Div(id="modal-tip-zones-list")
-                                ]
-                            )
+                            html.Div(className="modal-chart-container", children=[
+                                html.Div(className="card", children=[
+                                    html.Div(className="card-head", children=[html.H3("Verteilung"), html.P("Histogramm.")]),
+                                    dcc.Graph(id="fig-tip-distribution", style={"height": "340px"}, config={"displayModeBar": False})
+                                ]),
+                            ]),
+                            html.Div(className="modal-stats-sidebar", children=[html.H4("Top Zones"), html.Div(id="modal-tip-zones-list")])
+                        ]
+                    )
+                ]
+            )
+        ]
+    )
+
+# --- MODAL 4: DEMAND SHIFT (DEEP DIVE) ---
+def _modal_overlay_demand():
+    return html.Div(
+        id="modal-demand-deepdive",
+        className="modal-overlay",
+        style={"display": "none"}, 
+        children=[
+            html.Div(
+                className="card modal-card-extended",
+                children=[
+                    html.Div(
+                        className="card-head modal-header-extended",
+                        children=[
+                            html.Div([html.H3("Market Evolution"), html.P("Saisonalität & Wettbewerb.")]),
+                            html.Button("✕", id="btn-close-modal-demand", className="btn-icon-round btn-close-round"),
+                        ]
+                    ),
+                    html.Div(
+                        className="modal-body-grid",
+                        children=[
+                            html.Div(className="modal-chart-container", children=[
+                                html.Div(className="card", children=[
+                                    html.Div(className="card-head", children=[html.H3("Saisonalität"), html.P("Jahresvergleich.")]),
+                                    dcc.Graph(id="fig-monthly-seasonality", style={"height": "340px"}, config={"displayModeBar": False})
+                                ]),
+                                html.Div(className="card", children=[
+                                    html.Div(className="card-head", children=[html.H3("Taxi War"), html.P("Marktanteile.")]),
+                                    dcc.Graph(id="fig-taxi-war", style={"height": "340px"}, config={"displayModeBar": False})
+                                ]),
+                            ]),
+                            html.Div(className="modal-stats-sidebar", children=[html.H4("Insights"), html.Div(id="modal-demand-stats")])
                         ]
                     )
                 ]
@@ -118,9 +189,10 @@ def _modal_overlay_tip():
 def layout_predefined():
     return html.Div(
         children=[
-            # Beide Modals einbinden (sie sind standardmäßig unsichtbar)
             _modal_overlay_peak(),
+            _modal_overlay_fare(),
             _modal_overlay_tip(),
+            _modal_overlay_demand(),
             
             html.Div(
                 className="grid-main",
@@ -135,6 +207,7 @@ def layout_predefined():
                         "Fares by Borough",
                         "fig-fares-borough",
                         "Boxplot: Median, Streuung, Ausreißer.",
+                        extra_header_content=html.Button("🔍", id="btn-open-modal-fare", className="btn-icon-round")
                     ),
                     _card(
                         "Average Tip Percentage",
@@ -146,6 +219,7 @@ def layout_predefined():
                         "Demand Shift over Years",
                         "fig-demand-years",
                         "Zeitreihe: Nachfrageentwicklung.",
+                        extra_header_content=html.Button("🔍", id="btn-open-modal-demand", className="btn-icon-round")
                     ),
                 ],
             )
