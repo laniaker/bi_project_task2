@@ -1,10 +1,13 @@
 from pathlib import Path
 from dash import Dash, dcc, html, Input, Output
+import calendar
 
+# Layouts
 from layouts.layout_predefined import layout_predefined
 from layouts.layout_creative import layout_creative
 from layouts.layout_location import layout_location
 
+# Callbacks
 from callbacks.predefined_callbacks import register_predefined_callbacks
 from callbacks.creative_callbacks import register_creative_callbacks
 from callbacks.location_callbacks import register_location_callbacks
@@ -12,9 +15,7 @@ from callbacks.location_callbacks import register_location_callbacks
 # ---------------------------------------------------
 # Pfade / Assets
 # ---------------------------------------------------
-# Basisverzeichnis dieses Files (für stabile relative Pfade)
 BASE_DIR = Path(__file__).resolve().parent
-# Assets (CSS, ggf. Bilder) werden von Dash automatisch geladen
 ASSETS_DIR = BASE_DIR / "assets"
 
 # ---------------------------------------------------
@@ -23,9 +24,7 @@ ASSETS_DIR = BASE_DIR / "assets"
 app = Dash(
     __name__,
     title="NYC Taxi Dashboard (Task 2b)",
-    # nötig, weil Tab-Inhalte dynamisch nachgeladen werden (IDs existieren nicht immer sofort)
     suppress_callback_exceptions=True,
-    # explizites Assets-Verzeichnis (hier liegt z. B. theme.css)
     assets_folder=str(ASSETS_DIR),
 )
 
@@ -34,56 +33,155 @@ app = Dash(
 # ---------------------------------------------------
 def sidebar_filters():
     """
-    Linke Filter-Sidebar (Taxi-Typ, Jahr, Borough).
-    Year/Borough-Optionen werden per Callback dynamisch befüllt.
+    Sidebar mit Umschalter zwischen 'Flexibel' (beliebige Auswahl) 
+    und 'Zeitraum' (Von-Bis).
     """
+    # Listen für die Dropdowns vorbereiten
+    month_names = [{"label": calendar.month_name[i], "value": i} for i in range(1, 13)]
+    years = [{"label": str(y), "value": y} for y in range(2019, 2026)]
+
     return html.Div(
         className="card",
         children=[
             html.P("Filter", className="section-title"),
+            
             html.Div(
                 className="filters",
                 children=[
-                    # Taxi-Typ (fixe Optionsliste)
+                    # 1. Taxi-Typ (Bleibt immer sichtbar)
                     html.Div(
                         [
                             html.Div("Taxi-Typ", className="filter-label"),
                             dcc.Dropdown(
                                 id="filter-taxi-type",
+                                options=[], # Wird via Callback gefüllt
+                                value=[], 
+                                placeholder="Alle Typen",
+                                multi=True,    
+                                clearable=True, 
+                            ),
+                        ],
+                        style={"marginBottom": "20px"}
+                    ),
+
+                    # 2. Der Modus-Schalter (Radio Buttons)
+                    html.Div(
+                        style={
+                            "backgroundColor": "#f8fafc", 
+                            "padding": "10px", 
+                            "borderRadius": "8px",
+                            "marginBottom": "15px",
+                            "border": "1px solid #e2e8f0"
+                        },
+                        children=[
+                            html.Label("Zeit-Modus:", className="filter-label", style={"marginBottom": "8px"}),
+                            dcc.RadioItems(
+                                id="time-filter-mode",
                                 options=[
-                                    {"label": "Alle", "value": "ALL"},
-                                    {"label": "Green", "value": "GREEN"},
-                                    {"label": "Yellow", "value": "YELLOW"},
-                                    {"label": "FHV", "value": "FHV"},
+                                    {"label": " Flexibel (Einzelwahl)", "value": "flexible"},
+                                    {"label": " Zeitraum (Von → Bis)", "value": "range"},
                                 ],
-                                value="ALL",
-                                clearable=False,
+                                value="flexible", # Standard
+                                labelStyle={"display": "block", "cursor": "pointer", "marginBottom": "4px", "fontSize": "13px"},
+                                inputStyle={"marginRight": "8px"}
+                            )
+                        ]
+                    ),
+
+                    # 3. CONTAINER A: FLEXIBEL 
+                    html.Div(
+                        id="container-time-flexible",
+                        children=[
+                            html.Div(
+                                [
+                                    html.Div("Jahre wählen", className="filter-label"),
+                                    dcc.Dropdown(
+                                        id="filter-year",
+                                        options=years, 
+                                        value=[],      
+                                        placeholder="Jahre...",
+                                        multi=True,    
+                                    ),
+                                ],
+                                style={"marginBottom": "10px"}
+                            ),
+                            html.Div(
+                                [
+                                    html.Div("Monate wählen", className="filter-label"),
+                                    dcc.Dropdown(
+                                        id="filter-month",
+                                        options=month_names,
+                                        value=[],   
+                                        placeholder="Monate...",
+                                        multi=True,    
+                                    ),
+                                ]
                             ),
                         ]
                     ),
-                    # Jahr (Optionen kommen aus der Datenbasis)
+
+                    # 4. CONTAINER B: ZEITRAUM 
                     html.Div(
-                        [
-                            html.Div("Jahr", className="filter-label"),
-                            dcc.Dropdown(
-                                id="filter-year",
-                                options=[],  # wird in predefined_callbacks initialisiert
-                                value=None,
-                                placeholder="Alle Jahre",
-                                clearable=True,
+                        id="container-time-range",
+                        style={"display": "none"}, 
+                        children=[
+                            html.Label("Start Datum", className="filter-label", style={"marginTop": "5px"}),
+                            html.Div(
+                                style={"display": "flex", "gap": "5px", "marginBottom": "10px"},
+                                children=[
+                                    dcc.Dropdown(
+                                        id="range-start-month",
+                                        options=month_names,
+                                        placeholder="Monat",
+                                        style={"flex": 1},
+                                        clearable=False
+                                    ),
+                                    dcc.Dropdown(
+                                        id="range-start-year",
+                                        options=years,
+                                        placeholder="Jahr",
+                                        style={"flex": 1},
+                                        clearable=False
+                                    ),
+                                ]
                             ),
+                            
+                            # End Datum
+                            html.Label("End Datum", className="filter-label"),
+                            html.Div(
+                                style={"display": "flex", "gap": "5px"},
+                                children=[
+                                    dcc.Dropdown(
+                                        id="range-end-month",
+                                        options=month_names,
+                                        placeholder="Monat",
+                                        style={"flex": 1},
+                                        clearable=False
+                                    ),
+                                    dcc.Dropdown(
+                                        id="range-end-year",
+                                        options=years,
+                                        placeholder="Jahr",
+                                        style={"flex": 1},
+                                        clearable=False
+                                    ),
+                                ]
+                            ),
+                            html.P("Filtert exakt den Zeitstrahl zwischen Start und Ende.", 
+                                   style={"fontSize": "11px", "color": "#64748b", "marginTop": "10px", "fontStyle": "italic"})
                         ]
                     ),
-                    # Pickup Borough (Optionen kommen aus der Datenbasis)
+
+                    # 5. Borough (Immer sichtbar)
                     html.Div(
                         [
-                            html.Div("Borough (Pickup)", className="filter-label"),
+                            html.Div("Borough", className="filter-label", style={"marginTop": "20px"}),
                             dcc.Dropdown(
                                 id="filter-borough",
-                                options=[],  # wird in predefined_callbacks initialisiert
-                                value=None,
+                                options=[], 
+                                value=[],      
                                 placeholder="Alle Boroughs",
-                                clearable=True,
+                                multi=True,    
                             ),
                         ]
                     ),
@@ -96,14 +194,9 @@ def sidebar_filters():
 # UI-Bausteine: KPI-Leiste (oben)
 # ---------------------------------------------------
 def kpi_row():
-    """
-    KPI-Row mit 4 Kennzahlen.
-    Werte werden später per Callbacks befüllt.
-    """
     return html.Div(
         className="kpis",
         children=[
-            # KPI 1: Anzahl Trips
             html.Div(
                 className="kpi",
                 children=[
@@ -112,7 +205,6 @@ def kpi_row():
                     html.P("Gesamt im Filter", className="kpi-sub"),
                 ],
             ),
-            # KPI 2: Durchschnittlicher Fare
             html.Div(
                 className="kpi success",
                 children=[
@@ -121,7 +213,6 @@ def kpi_row():
                     html.P("USD pro Trip", className="kpi-sub"),
                 ],
             ),
-            # KPI 3: Durchschnittliche Tip-Quote (nur Kartenzahlungen)
             html.Div(
                 className="kpi warn",
                 children=[
@@ -130,7 +221,6 @@ def kpi_row():
                     html.P("nur Card-Daten", className="kpi-sub"),
                 ],
             ),
-            # KPI 4: Anteil Ausreißer (IQR-Regel)
             html.Div(
                 className="kpi danger",
                 children=[
@@ -143,45 +233,31 @@ def kpi_row():
     )
 
 # ---------------------------------------------------
-# UI-Bausteine: Insights Panel (Executive Summary + Tabellen)
+# UI-Bausteine: Insights Panel
 # ---------------------------------------------------
 def insights_panel():
-    """
-    Rechte/Linke Info-Card für Executive Insights:
-    - Kurztext (automatisch/regelbasiert möglich)
-    - Top Boroughs (Trips)
-    - Top Hours (Trips)
-    """
     return html.Div(
         className="card",
         children=[
             html.P("Executive Insights", className="section-title"),
-
-            # Kurztext, der sich je nach Filter/Ergebnis ändern kann
             html.Div(
                 id="insight-text",
                 style={"color": "#0f172a", "fontSize": "13px", "marginBottom": "10px"},
                 children="Wähle Filter, um die wichtigsten Muster zu sehen.",
             ),
-
-            # Tabelle 1: Top Boroughs
             html.H4("Top Boroughs (Trips)", style={"margin": "10px 0 6px 0", "fontSize": "13px"}),
             html.Table(
                 className="table-lite",
                 children=[
                     html.Thead(html.Tr([html.Th("Borough"), html.Th("Trips")])),
-                    # Body wird dynamisch befüllt
                     html.Tbody(id="tbl-top-boroughs", children=[]),
                 ],
             ),
-
-            # Tabelle 2: Top Hours
             html.H4("Top Hours", style={"margin": "12px 0 6px 0", "fontSize": "13px"}),
             html.Table(
                 className="table-lite",
                 children=[
                     html.Thead(html.Tr([html.Th("Hour"), html.Th("Trips")])),
-                    # Body wird dynamisch befüllt
                     html.Tbody(id="tbl-top-hours", children=[]),
                 ],
             ),
@@ -189,12 +265,11 @@ def insights_panel():
     )
 
 # ---------------------------------------------------
-# App Layout (Seitenaufbau)
+# App Layout
 # ---------------------------------------------------
 app.layout = html.Div(
     className="container",
     children=[
-        # Header / Titelbereich
         html.Div(
             className="header",
             children=[
@@ -207,15 +282,10 @@ app.layout = html.Div(
                 ),
             ],
         ),
-
-        # KPI-Leiste oben
         kpi_row(),
-
-        # Hauptbereich: Sidebar + Main Content
         html.Div(
             className="shell",
             children=[
-                # Sidebar (Filter + Insights)
                 html.Div(
                     className="sidebar",
                     children=[
@@ -223,12 +293,9 @@ app.layout = html.Div(
                         insights_panel(),
                     ],
                 ),
-
-                # Main Content (Tabs + Tab-Inhalt)
                 html.Div(
                     className="main",
                     children=[
-                        # Tabs in eigener Card (optisch abgesetzt)
                         html.Div(
                             className="card",
                             style={"marginBottom": "12px"},
@@ -244,7 +311,6 @@ app.layout = html.Div(
                                 )
                             ],
                         ),
-                        # Tab-Content wird dynamisch gerendert
                         html.Div(id="tab-content"),
                     ],
                 ),
@@ -254,7 +320,7 @@ app.layout = html.Div(
 )
 
 # ---------------------------------------------------
-# Tab Rendering: je nach Tab wird das passende Layout zurückgegeben
+# Callback für Tab-Wechsel
 # ---------------------------------------------------
 @app.callback(Output("tab-content", "children"), Input("main-tabs", "value"))
 def render_tab(tab):
@@ -264,17 +330,29 @@ def render_tab(tab):
         return layout_location()
     else:
         return layout_predefined()
+    
+# ---------------------------------------------------
+# UI Callback: Sichtbarkeit der Zeit-Filter steuern
+# ---------------------------------------------------
+@app.callback(
+    [Output("container-time-flexible", "style"),
+     Output("container-time-range", "style")],
+    Input("time-filter-mode", "value")
+)
+def toggle_filter_mode(mode):
+    if mode == "range":
+        # Flexibel ausblenden, Range anzeigen
+        return {"display": "none"}, {"display": "block"}
+    else:
+        # Flexibel anzeigen (Block), Range ausblenden (None)
+        return {"display": "block"}, {"display": "none"}
 
 # ---------------------------------------------------
-# Callback-Registrierung (Charts, Filter-Initialisierung etc.)
+# Registrierung der Callbacks (Logik)
 # ---------------------------------------------------
 register_predefined_callbacks(app)
 register_creative_callbacks(app)
 register_location_callbacks(app)
 
-# ---------------------------------------------------
-# Lokaler Start
-# ---------------------------------------------------
 if __name__ == "__main__":
-    # debug=True: Auto-Reload + Fehlerausgabe (für Entwicklung)
     app.run(debug=True)
