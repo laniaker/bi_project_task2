@@ -1,5 +1,6 @@
 from pathlib import Path
 from dash import Dash, dcc, html, Input, Output
+import calendar
 
 # Layouts
 from layouts.layout_predefined import layout_predefined
@@ -32,69 +33,155 @@ app = Dash(
 # ---------------------------------------------------
 def sidebar_filters():
     """
-    Linke Filter-Sidebar.
-    Enthält Filter für Taxi-Typ, Jahr, Monat und Borough.
+    Sidebar mit Umschalter zwischen 'Flexibel' (beliebige Auswahl) 
+    und 'Zeitraum' (Von-Bis).
     """
+    # Listen für die Dropdowns vorbereiten
+    month_names = [{"label": calendar.month_name[i], "value": i} for i in range(1, 13)]
+    years = [{"label": str(y), "value": y} for y in range(2019, 2026)]
+
     return html.Div(
         className="card",
         children=[
             html.P("Filter", className="section-title"),
+            
             html.Div(
                 className="filters",
                 children=[
-                    # Taxi-Typ (Multi-Select)
+                    # 1. Taxi-Typ (Bleibt immer sichtbar)
                     html.Div(
                         [
                             html.Div("Taxi-Typ", className="filter-label"),
                             dcc.Dropdown(
                                 id="filter-taxi-type",
-                                options=[], # Wird vom Callback gefüllt
+                                options=[], # Wird via Callback gefüllt
                                 value=[], 
-                                placeholder="Alle Taxi-Typen",
+                                placeholder="Alle Typen",
                                 multi=True,    
                                 clearable=True, 
                             ),
+                        ],
+                        style={"marginBottom": "20px"}
+                    ),
+
+                    # 2. Der Modus-Schalter (Radio Buttons)
+                    html.Div(
+                        style={
+                            "backgroundColor": "#f8fafc", 
+                            "padding": "10px", 
+                            "borderRadius": "8px",
+                            "marginBottom": "15px",
+                            "border": "1px solid #e2e8f0"
+                        },
+                        children=[
+                            html.Label("Zeit-Modus:", className="filter-label", style={"marginBottom": "8px"}),
+                            dcc.RadioItems(
+                                id="time-filter-mode",
+                                options=[
+                                    {"label": " Flexibel (Einzelwahl)", "value": "flexible"},
+                                    {"label": " Zeitraum (Von → Bis)", "value": "range"},
+                                ],
+                                value="flexible", # Standard
+                                labelStyle={"display": "block", "cursor": "pointer", "marginBottom": "4px", "fontSize": "13px"},
+                                inputStyle={"marginRight": "8px"}
+                            )
                         ]
                     ),
-                    # Jahr (Multi-Select)
+
+                    # 3. CONTAINER A: FLEXIBEL 
                     html.Div(
-                        [
-                            html.Div("Jahr", className="filter-label"),
-                            dcc.Dropdown(
-                                id="filter-year",
-                                options=[], 
-                                value=[],      
-                                placeholder="Alle Jahre",
-                                multi=True,    
-                                clearable=True,
+                        id="container-time-flexible",
+                        children=[
+                            html.Div(
+                                [
+                                    html.Div("Jahre wählen", className="filter-label"),
+                                    dcc.Dropdown(
+                                        id="filter-year",
+                                        options=years, 
+                                        value=[],      
+                                        placeholder="Jahre...",
+                                        multi=True,    
+                                    ),
+                                ],
+                                style={"marginBottom": "10px"}
+                            ),
+                            html.Div(
+                                [
+                                    html.Div("Monate wählen", className="filter-label"),
+                                    dcc.Dropdown(
+                                        id="filter-month",
+                                        options=month_names,
+                                        value=[],   
+                                        placeholder="Monate...",
+                                        multi=True,    
+                                    ),
+                                ]
                             ),
                         ]
                     ),
-                    # Monat (Multi-Select) - HIER IST DER NEUE FILTER
+
+                    # 4. CONTAINER B: ZEITRAUM 
                     html.Div(
-                        [
-                            html.Div("Monat", className="filter-label"),
-                            dcc.Dropdown(
-                                id="filter-month",
-                                options=[], # Wird vom Callback gefüllt (Jan-Dez)
-                                value=[],   # Leer = Alle Monate
-                                placeholder="Alle Monate",
-                                multi=True,    
-                                clearable=True,
+                        id="container-time-range",
+                        style={"display": "none"}, 
+                        children=[
+                            html.Label("Start Datum", className="filter-label", style={"marginTop": "5px"}),
+                            html.Div(
+                                style={"display": "flex", "gap": "5px", "marginBottom": "10px"},
+                                children=[
+                                    dcc.Dropdown(
+                                        id="range-start-month",
+                                        options=month_names,
+                                        placeholder="Monat",
+                                        style={"flex": 1},
+                                        clearable=False
+                                    ),
+                                    dcc.Dropdown(
+                                        id="range-start-year",
+                                        options=years,
+                                        placeholder="Jahr",
+                                        style={"flex": 1},
+                                        clearable=False
+                                    ),
+                                ]
                             ),
+                            
+                            # End Datum
+                            html.Label("End Datum", className="filter-label"),
+                            html.Div(
+                                style={"display": "flex", "gap": "5px"},
+                                children=[
+                                    dcc.Dropdown(
+                                        id="range-end-month",
+                                        options=month_names,
+                                        placeholder="Monat",
+                                        style={"flex": 1},
+                                        clearable=False
+                                    ),
+                                    dcc.Dropdown(
+                                        id="range-end-year",
+                                        options=years,
+                                        placeholder="Jahr",
+                                        style={"flex": 1},
+                                        clearable=False
+                                    ),
+                                ]
+                            ),
+                            html.P("Filtert exakt den Zeitstrahl zwischen Start und Ende.", 
+                                   style={"fontSize": "11px", "color": "#64748b", "marginTop": "10px", "fontStyle": "italic"})
                         ]
                     ),
-                    # Borough (Multi-Select)
+
+                    # 5. Borough (Immer sichtbar)
                     html.Div(
                         [
-                            html.Div("Borough (Pickup)", className="filter-label"),
+                            html.Div("Borough", className="filter-label", style={"marginTop": "20px"}),
                             dcc.Dropdown(
                                 id="filter-borough",
                                 options=[], 
                                 value=[],      
                                 placeholder="Alle Boroughs",
                                 multi=True,    
-                                clearable=True,
                             ),
                         ]
                     ),
@@ -243,6 +330,22 @@ def render_tab(tab):
         return layout_location()
     else:
         return layout_predefined()
+    
+# ---------------------------------------------------
+# UI Callback: Sichtbarkeit der Zeit-Filter steuern
+# ---------------------------------------------------
+@app.callback(
+    [Output("container-time-flexible", "style"),
+     Output("container-time-range", "style")],
+    Input("time-filter-mode", "value")
+)
+def toggle_filter_mode(mode):
+    if mode == "range":
+        # Flexibel ausblenden, Range anzeigen
+        return {"display": "none"}, {"display": "block"}
+    else:
+        # Flexibel anzeigen (Block), Range ausblenden (None)
+        return {"display": "block"}, {"display": "none"}
 
 # ---------------------------------------------------
 # Registrierung der Callbacks (Logik)

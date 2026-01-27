@@ -17,23 +17,37 @@ from utils.data_access import (
 def register_creative_callbacks(app):
     """
     Registriert alle Callbacks für den 'Creative'-Tab.
-    JETZT MIT MONATSFILTER!
+    JETZT MIT DUAL-MODE ZEITFILTER (Range & Flexibel).
     """
+
+    # -----------------------------------------------------------
+    # GLOBALE INPUT-LISTE 
+    # -----------------------------------------------------------
+    COMMON_INPUTS = [
+        Input("filter-taxi-type", "value"),
+        Input("filter-year", "value"),
+        Input("filter-borough", "value"),
+        Input("filter-month", "value"),
+        Input("time-filter-mode", "value"),
+        Input("range-start-year", "value"),
+        Input("range-start-month", "value"),
+        Input("range-end-year", "value"),
+        Input("range-end-month", "value")
+    ]
 
     # ---------------------------------------------------
     # 1) Demand Heatmap: Trips nach Stunde × Wochentag
     # ---------------------------------------------------
-    @app.callback(
-        Output("fig-heatmap", "figure"),
-        Input("filter-taxi-type", "value"),
-        Input("filter-year", "value"),
-        Input("filter-borough", "value"),
-        Input("filter-month", "value"), # NEU
-    )
-    def fig_heatmap(taxi_type, year, borough, month):
+    @app.callback(Output("fig-heatmap", "figure"), COMMON_INPUTS)
+    def fig_heatmap(taxi_type, year, borough, month, mode, sy, sm, ey, em):
         if not taxi_type: taxi_type = "ALL"
 
-        df = load_weekly_patterns(taxi_type, year, borough, month)
+        # Daten laden mit allen Zeit-Parametern
+        df = load_weekly_patterns(
+            taxi_type=taxi_type, borough=borough, 
+            mode=mode, years=year, months=month, 
+            sy=sy, sm=sm, ey=ey, em=em
+        )
 
         if df.empty:
             fig = go.Figure()
@@ -69,17 +83,15 @@ def register_creative_callbacks(app):
     # ---------------------------------------------------
     # 2) Scatter: Fare vs Distance (Clean Bubble)
     # ---------------------------------------------------
-    @app.callback(
-        Output("fig-scatter-fare-distance", "figure"),
-        Input("filter-taxi-type", "value"),
-        Input("filter-year", "value"),
-        Input("filter-borough", "value"),
-        Input("filter-month", "value"), # NEU
-    )
-    def fig_scatter(taxi_type, year, borough, month):
+    @app.callback(Output("fig-scatter-fare-distance", "figure"), COMMON_INPUTS)
+    def fig_scatter(taxi_type, year, borough, month, mode, sy, sm, ey, em):
         if not taxi_type: taxi_type = "ALL"
         
-        df = load_agg_fare_dist(taxi_type, year, borough, month)
+        df = load_agg_fare_dist(
+            taxi_type=taxi_type, borough=borough, 
+            mode=mode, years=year, months=month, 
+            sy=sy, sm=sm, ey=ey, em=em
+        )
         
         if df.empty:
             fig = go.Figure()
@@ -116,17 +128,15 @@ def register_creative_callbacks(app):
     # ---------------------------------------------------
     # 3) Flows: Pickup -> Dropoff (Stacked Bar)
     # ---------------------------------------------------
-    @app.callback(
-        Output("fig-flows", "figure"),
-        Input("filter-taxi-type", "value"),
-        Input("filter-year", "value"),
-        Input("filter-borough", "value"),
-        Input("filter-month", "value"), # NEU
-    )
-    def fig_flows(taxi_type, year, borough, month):
+    @app.callback(Output("fig-flows", "figure"), COMMON_INPUTS)
+    def fig_flows(taxi_type, year, borough, month, mode, sy, sm, ey, em):
         if not taxi_type: taxi_type = "ALL"
         
-        df = load_borough_flows(taxi_type, year, borough, month)
+        df = load_borough_flows(
+            taxi_type=taxi_type, borough=borough, 
+            mode=mode, years=year, months=month, 
+            sy=sy, sm=sm, ey=ey, em=em
+        )
         
         if df.empty:
             fig = go.Figure()
@@ -156,17 +166,15 @@ def register_creative_callbacks(app):
     # ---------------------------------------------------
     # 4) Revenue Efficiency (Boxplot)
     # ---------------------------------------------------
-    @app.callback(
-        Output("fig-kpi-rev-eff", "figure"),
-        Input("filter-taxi-type", "value"),
-        Input("filter-year", "value"),
-        Input("filter-borough", "value"),
-        Input("filter-month", "value"),
-    )
-    def fig_efficiency(taxi_type, year, borough, month):
+    @app.callback(Output("fig-kpi-rev-eff", "figure"), COMMON_INPUTS)
+    def fig_efficiency(taxi_type, year, borough, month, mode, sy, sm, ey, em):
         if not taxi_type: taxi_type = "ALL"
         
-        df = load_revenue_efficiency(taxi_type, year, borough, month)
+        df = load_revenue_efficiency(
+            taxi_type=taxi_type, borough=borough, 
+            mode=mode, years=year, months=month, 
+            sy=sy, sm=sm, ey=ey, em=em
+        )
         
         if df.empty:
             fig = go.Figure()
@@ -204,14 +212,14 @@ def register_creative_callbacks(app):
     # ---------------------------------------------------
     # 6) IT & Data Quality Audit (Stacked Area)
     # ---------------------------------------------------
-    @app.callback(
-        Output("fig-quality-audit", "figure"),
-        Input("filter-taxi-type", "value"),
-        Input("filter-year", "value"),
-        Input("filter-month", "value"), # NEU
-    )
-    def fig_quality_audit(taxi_type, year, month):
-        df = load_quality_audit(taxi_type, year, month)
+    @app.callback(Output("fig-quality-audit", "figure"), COMMON_INPUTS)
+    def fig_quality_audit(taxi_type, year, borough, month, mode, sy, sm, ey, em):
+        # Hinweis: load_quality_audit unterstützt kein Borough, daher übergeben wir es nicht
+        df = load_quality_audit(
+            taxi_type=taxi_type, 
+            mode=mode, years=year, months=month, 
+            sy=sy, sm=sm, ey=ey, em=em
+        )
         
         if df.empty:
             fig = go.Figure()
@@ -249,14 +257,13 @@ def register_creative_callbacks(app):
     # ---------------------------------------------------
     # 7) Airport Sunburst
     # ---------------------------------------------------
-    @app.callback(
-        Output("fig-airport-analysis", "figure"),
-        Input("filter-taxi-type", "value"),
-        Input("filter-year", "value"),
-        Input("filter-month", "value"),
-    )
-    def fig_airport_sunburst(taxi_type, year, month):
-        df = load_airport_sunburst_data(taxi_type, year, month)
+    @app.callback(Output("fig-airport-analysis", "figure"), COMMON_INPUTS)
+    def fig_airport_sunburst(taxi_type, year, borough, month, mode, sy, sm, ey, em):
+        df = load_airport_sunburst_data(
+            taxi_type=taxi_type, 
+            mode=mode, years=year, months=month, 
+            sy=sy, sm=sm, ey=ey, em=em
+        )
         
         if df.empty:
             fig = go.Figure()
@@ -293,15 +300,11 @@ def register_creative_callbacks(app):
             labels=df_all["label"],
             parents=df_all["parent"],
             values=df_all["total_revenue"],
-            
-            # --- HIER IST DER FIX FÜR DIE FARBEN ---
             marker=dict(
                 colors=df_all["avg_tip_pct"],
-                colorscale="RdYlGn", # Rot -> Gelb -> Grün
-                cmin=0,   # Startet fest bei 0% (Rot)
-                cmax=30,  # Endet fest bei 30% (Sattes Grün)
-                # Alles über 30% wird jetzt einfach als sattes Grün dargestellt,
-                # statt die Skala zu verzerren.
+                colorscale="RdYlGn",
+                cmin=0,   
+                cmax=30,  
                 colorbar=dict(title="Ø Tip %"),
                 line=dict(color='black', width=0.5)
             ),
@@ -313,7 +316,7 @@ def register_creative_callbacks(app):
                 "Umsatz: %{customdata[0]:,.0f} $<br>" +
                 "Fahrten: %{customdata[1]:,.0f}<br>" +
                 "Ø Fare: %{customdata[3]:.2f} $<br>" + 
-                "Ø Tip: %{customdata[2]:.1f}%" + # Zeigt den ECHTEN Wert (z.B. 81%) im Tooltip
+                "Ø Tip: %{customdata[2]:.1f}%" +
                 "<extra></extra>"
             ),
             insidetextorientation='auto',
