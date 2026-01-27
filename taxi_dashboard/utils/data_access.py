@@ -342,16 +342,25 @@ def get_top_hours(taxi_type="ALL", year=None, borough=None, month=None):
         return []
 
 
-def load_trips_and_geometries(taxi_type="ALL", year=None, borough=None):
+def load_trips_and_geometries(taxi_type="ALL", year=None, borough=None, month=None):
     if not bq_client: return pd.DataFrame(), {}
     
     filters = ["1=1"]
     filters.append(_build_sql_condition("taxi_type", taxi_type, is_string=True))
     filters.append(_build_sql_condition("year", year, is_string=False))
     filters.append(_build_sql_condition("borough", borough, is_string=True))
+    filters.append(_build_sql_condition("month", month, is_string=False)) # NEU
     
+    # Wir summieren trip_count für die gefilterte Auswahl.
+    # geojson_str ist im Group By, damit wir es pro Zone zurückbekommen.
     sql = f"""
-        SELECT location_id, zone, borough, geojson_str, SUM(trip_count) as trip_count
+        SELECT 
+            location_id, 
+            zone, 
+            borough, 
+            geojson_str, 
+            SUM(trip_count) as trip_count,
+            AVG(avg_amount) as avg_amount
         FROM `taxi-bi-project.aggregational.agg_location_map`
         WHERE {" AND ".join(filters)}
         GROUP BY 1, 2, 3, 4
@@ -360,17 +369,27 @@ def load_trips_and_geometries(taxi_type="ALL", year=None, borough=None):
         df = bq_client.query(sql).to_dataframe()
         if df.empty: return df, {}
         
+        # GeoJSON FeatureCollection bauen
         features = []
         for _, row in df.iterrows():
             if row['geojson_str']:
+                # Wir parsen den String zurück zu JSON
+                geom = json.loads(row['geojson_str'])
                 features.append({
                     "type": "Feature",
-                    "geometry": json.loads(row['geojson_str']),
+                    "geometry": geom,
                     "id": str(row['location_id']), 
-                    "properties": {"zone": row['zone'], "borough": row['borough']}
+                    "properties": {
+                        "zone": row['zone'], 
+                        "borough": row['borough'],
+                        "trips": row['trip_count'],
+                        "avg_amount": row['avg_amount']
+                    }
                 })
+        
         return df, {"type": "FeatureCollection", "features": features}
-    except Exception:
+    except Exception as e:
+        print(f"!!! FEHLER in load_trips_and_geometries: {e}") # <--- DAS HIER EINFÜGEN
         return pd.DataFrame(), {}
 
 
