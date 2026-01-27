@@ -22,35 +22,16 @@ TABLE_AGG_PEAK = "taxi-bi-project.aggregational.agg_peak_hours"
 def _build_sql_condition(field_name, value, is_string=True):
     """
     Erzeugt dynamisch die SQL WHERE-Bedingung für Multi-Select-Filter.
-    
-    Args:
-        field_name (str): Der Spaltenname in der DB (z.B. 'year' oder 'borough').
-        value (list|str|int): Der Filterwert aus dem Dashboard (kann Liste, Einzelwert oder None sein).
-        is_string (bool): Ob die Werte in Hochkommas gesetzt werden müssen (True für Text, False für Zahlen).
-        
-    Returns:
-        str: Ein SQL-Fragment wie "year IN (2020, 2021)" oder "1=1" (wenn keine Einschränkung).
     """
-    # 1. Keine Filterung, wenn Wert leer oder None ist
-    if not value:
-        return "1=1"
-    
-    # Sicherstellen, dass wir immer mit einer Liste arbeiten
-    if not isinstance(value, list):
-        value = [value]
+    if not value: return "1=1"
+    if not isinstance(value, list): value = [value]
+    if "ALL" in value: return "1=1"
         
-    # 2. Wenn "ALL" in der Auswahl ist, ignorieren wir den Filter
-    if "ALL" in value:
-        return "1=1"
-        
-    # 3. SQL IN-Clause bauen
     if is_string:
-        # Strings müssen in Hochkommas und escaped werden
         safe_values = [str(v).replace("'", "\\'") for v in value]
         val_str = "', '".join(safe_values)
         return f"{field_name} IN ('{val_str}')"
     else:
-        # Zahlen werden direkt kommasepariert eingefügt
         val_str = ", ".join(str(v) for v in value)
         return f"{field_name} IN ({val_str})"
 
@@ -63,9 +44,11 @@ def get_filter_options():
     default_years = [2019, 2020, 2021, 2022, 2023]
     default_boroughs = ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island"]
     default_types = ["YELLOW", "GREEN", "FHV"]
+    # NEU: Monate (1-12)
+    default_months = list(range(1, 13))
 
     if not bq_client:
-        return default_years, default_boroughs, default_types
+        return default_years, default_boroughs, default_types, default_months
 
     try:
         # Jahre
@@ -90,19 +73,20 @@ def get_filter_options():
         """
         types = bq_client.query(sql_types).to_dataframe()['source_system'].tolist()
 
-        return years, boroughs, types
+        return years, boroughs, types, default_months
     except Exception as e:
         print(f"Fehler Filter-Optionen: {e}")
-        return default_years, default_boroughs, default_types
+        return default_years, default_boroughs, default_types, default_months
 
 
-def load_peak_hours(taxi_type="ALL", year=None, borough=None) -> pd.DataFrame:
+def load_peak_hours(taxi_type="ALL", year=None, borough=None, month=None) -> pd.DataFrame:
     if not bq_client: return pd.DataFrame({"hour": list(range(24)), "trips": [0]*24})
 
     filters = ["1=1"]
     filters.append(_build_sql_condition("year", year, is_string=False))
     filters.append(_build_sql_condition("borough", borough, is_string=True))
     filters.append(_build_sql_condition("taxi_type", taxi_type, is_string=True))
+    filters.append(_build_sql_condition("month", month, is_string=False)) # NEU
     
     query = f"""
         SELECT hour, SUM(trip_count) as trips 
@@ -120,16 +104,16 @@ def load_peak_hours(taxi_type="ALL", year=None, borough=None) -> pd.DataFrame:
             return pd.DataFrame({"hour": list(range(24)), "trips": [0]*24})
         return df
     except Exception as e:
-        print(f"Fehler load_peak_hours: {e}")
         return pd.DataFrame({"hour": list(range(24)), "trips": [0]*24})
 
 
-def load_fares_by_borough(taxi_type="ALL", year=None) -> pd.DataFrame:
+def load_fares_by_borough(taxi_type="ALL", year=None, month=None) -> pd.DataFrame:
     if not bq_client: return pd.DataFrame()
 
     filters = ["1=1"]
     filters.append(_build_sql_condition("year", year, is_string=False))
     filters.append(_build_sql_condition("taxi_type", taxi_type, is_string=True))
+    filters.append(_build_sql_condition("month", month, is_string=False)) # NEU
 
     sql = f"""
         SELECT 
@@ -150,20 +134,15 @@ def load_fares_by_borough(taxi_type="ALL", year=None) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def load_tip_percentage(taxi_type="ALL", year=None, borough=None) -> pd.DataFrame:
-    """
-    Lädt Tip-Percentage für das Balkendiagramm.
-    LOGIK-UPDATE: Gruppiert IMMER nach Borough, auch wenn gefiltert wird.
-    Damit sieht man bei Auswahl von 'Manhattan' & 'Queens' genau diese beiden Balken.
-    """
+def load_tip_percentage(taxi_type="ALL", year=None, borough=None, month=None) -> pd.DataFrame:
     if not bq_client: return pd.DataFrame()
     
     filters = ["1=1"]
     filters.append(_build_sql_condition("taxi_type", taxi_type, is_string=True))
     filters.append(_build_sql_condition("year", year, is_string=False))
     filters.append(_build_sql_condition("borough", borough, is_string=True))
+    filters.append(_build_sql_condition("month", month, is_string=False)) # NEU
 
-    # WICHTIG: Wir gruppieren jetzt immer nach Borough, um die Auswahl direkt zu zeigen.
     group_col = "borough"
     order_clause = "avg_tip_pct DESC"
 
@@ -182,12 +161,13 @@ def load_tip_percentage(taxi_type="ALL", year=None, borough=None) -> pd.DataFram
         return pd.DataFrame()
 
 
-def load_demand_over_years(taxi_type="ALL", borough=None) -> pd.DataFrame:
+def load_demand_over_years(taxi_type="ALL", borough=None, month=None) -> pd.DataFrame:
     if not bq_client: return pd.DataFrame()
 
     filters = ["1=1"]
     filters.append(_build_sql_condition("taxi_type", taxi_type, is_string=True))
     filters.append(_build_sql_condition("borough", borough, is_string=True))
+    filters.append(_build_sql_condition("month", month, is_string=False)) # NEU
 
     sql = f"""
         SELECT year, SUM(total_trips) as trips
@@ -201,13 +181,14 @@ def load_demand_over_years(taxi_type="ALL", borough=None) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def load_weekly_patterns(taxi_type="ALL", year=None, borough=None):
+# 1. Heatmap & Weekly Patterns (hatten wir schon, hier zur Sicherheit)
+def load_weekly_patterns(taxi_type="ALL", year=None, borough=None, month=None):
     if not bq_client: return pd.DataFrame()
-
     filters = ["1=1"]
     filters.append(_build_sql_condition("taxi_type", taxi_type, is_string=True))
     filters.append(_build_sql_condition("year", year, is_string=False))
     filters.append(_build_sql_condition("borough", borough, is_string=True))
+    filters.append(_build_sql_condition("month", month, is_string=False)) # NEU
     
     sql = f"""
         SELECT day_name, day_of_week, hour, taxi_type, SUM(trip_count) as trips
@@ -216,19 +197,17 @@ def load_weekly_patterns(taxi_type="ALL", year=None, borough=None):
         GROUP BY 1, 2, 3, 4
         ORDER BY day_of_week, hour
     """
-    try:
-        return bq_client.query(sql).to_dataframe()
-    except Exception:
-        return pd.DataFrame()
+    try: return bq_client.query(sql).to_dataframe()
+    except Exception: return pd.DataFrame()
 
-
-def load_agg_fare_dist(taxi_type="ALL", year=None, borough=None):
+# 2. Scatter Plot (Fare Distribution)
+def load_agg_fare_dist(taxi_type="ALL", year=None, borough=None, month=None):
     if not bq_client: return pd.DataFrame()
-
     filters = ["1=1"]
     filters.append(_build_sql_condition("taxi_type", taxi_type, is_string=True))
     filters.append(_build_sql_condition("year", year, is_string=False))
     filters.append(_build_sql_condition("borough", borough, is_string=True))
+    filters.append(_build_sql_condition("month", month, is_string=False)) # JETZT AKTIVIEREN
     
     sql = f"""
         SELECT dist_bin as distance, fare_bin as fare, taxi_type, SUM(trip_count) as trips
@@ -237,20 +216,18 @@ def load_agg_fare_dist(taxi_type="ALL", year=None, borough=None):
         GROUP BY 1, 2, 3
         HAVING trips > 10 
     """
-    try:
-        return bq_client.query(sql).to_dataframe()
-    except Exception:
-        return pd.DataFrame()
+    try: return bq_client.query(sql).to_dataframe()
+    except Exception: return pd.DataFrame()
 
 
-def load_borough_flows(taxi_type="ALL", year=None, borough=None):
+# 3. Borough Flows
+def load_borough_flows(taxi_type="ALL", year=None, borough=None, month=None):
     if not bq_client: return pd.DataFrame()
-
     filters = ["1=1"]
     filters.append(_build_sql_condition("taxi_type", taxi_type, is_string=True))
     filters.append(_build_sql_condition("year", year, is_string=False))
-    # Achtung: Filtert hier nur nach Pickup-Borough
     filters.append(_build_sql_condition("pickup_borough", borough, is_string=True))
+    filters.append(_build_sql_condition("month", month, is_string=False)) # NEU
     
     sql = f"""
         SELECT pickup_borough, dropoff_borough, SUM(trips) as trips
@@ -259,19 +236,17 @@ def load_borough_flows(taxi_type="ALL", year=None, borough=None):
         GROUP BY 1, 2
         ORDER BY trips DESC
     """
-    try:
-        return bq_client.query(sql).to_dataframe()
-    except Exception:
-        return pd.DataFrame()
+    try: return bq_client.query(sql).to_dataframe()
+    except Exception: return pd.DataFrame()
 
-
-def load_revenue_efficiency(taxi_type="ALL", year=None, borough=None):
+# 4. Revenue Efficiency
+def load_revenue_efficiency(taxi_type="ALL", year=None, borough=None, month=None):
     if not bq_client: return pd.DataFrame()
-
     filters = ["1=1"]
     filters.append(_build_sql_condition("taxi_type", taxi_type, is_string=True))
     filters.append(_build_sql_condition("year", year, is_string=False))
     filters.append(_build_sql_condition("borough", borough, is_string=True))
+    filters.append(_build_sql_condition("month", month, is_string=False)) # NEU
     
     sql = f"""
         SELECT 
@@ -286,19 +261,21 @@ def load_revenue_efficiency(taxi_type="ALL", year=None, borough=None):
         WHERE {" AND ".join(filters)}
         GROUP BY 1 ORDER BY 1
     """
-    try:
-        return bq_client.query(sql).to_dataframe()
-    except Exception:
-        return pd.DataFrame()
+    try: return bq_client.query(sql).to_dataframe()
+    except Exception: return pd.DataFrame()
 
 
-def get_kpi_data(taxi_type="ALL", year=None, borough=None):
+def get_kpi_data(taxi_type="ALL", year=None, borough=None, month=None):
     if not bq_client: return 0, 0, 0, 0
 
     filters = ["1=1"]
     filters.append(_build_sql_condition("taxi_type", taxi_type, is_string=True))
     filters.append(_build_sql_condition("year", year, is_string=False))
     filters.append(_build_sql_condition("borough", borough, is_string=True))
+    # Achtung: agg_global_kpis bräuchte auch ein Update für Monate!
+    # Wenn wir agg_kpis_main (Predefined) nehmen, sollte es gehen wenn wir es upgedatet haben.
+    # Da wir agg_global_kpis nicht angefasst haben, lassen wir den Filter hier weg oder nehmen agg_monthly_kpis
+    # Wir filtern hier vorerst NICHT nach Monat, um Crash zu vermeiden, bis die Tabelle aktualisiert ist.
     
     sql = f"""
         SELECT 
@@ -326,11 +303,12 @@ def get_kpi_data(taxi_type="ALL", year=None, borough=None):
         return 0, 0.0, 0.0, 0.0
 
 
-def get_top_boroughs(taxi_type="ALL", year=None):
+def get_top_boroughs(taxi_type="ALL", year=None, month=None):
     if not bq_client: return []
     filters = ["borough != 'Unknown'"]
     filters.append(_build_sql_condition("taxi_type", taxi_type, is_string=True))
     filters.append(_build_sql_condition("year", year, is_string=False))
+    filters.append(_build_sql_condition("month", month, is_string=False)) # NEU (agg_demand_years hat Monat)
 
     sql = f"""
         SELECT borough as Borough, SUM(total_trips) as Trips
@@ -344,12 +322,13 @@ def get_top_boroughs(taxi_type="ALL", year=None):
         return []
 
 
-def get_top_hours(taxi_type="ALL", year=None, borough=None):
+def get_top_hours(taxi_type="ALL", year=None, borough=None, month=None):
     if not bq_client: return []
     filters = ["1=1"]
     filters.append(_build_sql_condition("taxi_type", taxi_type, is_string=True))
     filters.append(_build_sql_condition("year", year, is_string=False))
     filters.append(_build_sql_condition("borough", borough, is_string=True))
+    filters.append(_build_sql_condition("month", month, is_string=False)) # NEU (agg_peak_hours hat Monat)
 
     sql = f"""
         SELECT hour as Hour, SUM(trip_count) as Trips
@@ -395,12 +374,14 @@ def load_trips_and_geometries(taxi_type="ALL", year=None, borough=None):
         return pd.DataFrame(), {}
 
 
-def load_quality_audit(taxi_type="ALL", year=None):
+# 5. Quality Audit (Achtung: Hier Logik anpassen, da 'month' ein Datum war)
+def load_quality_audit(taxi_type="ALL", year=None, month=None):
     if not bq_client: return pd.DataFrame()
-    
     filters = ["1=1"]
     filters.append(_build_sql_condition("source_system", taxi_type, is_string=True))
     filters.append(_build_sql_condition("EXTRACT(YEAR FROM month)", year, is_string=False))
+    # Filter für Monat hinzufügen (wir extrahieren den Monat aus dem Datum)
+    filters.append(_build_sql_condition("EXTRACT(MONTH FROM month)", month, is_string=False)) 
     
     sql = f"""
         SELECT month, SUM(total_trips) as total_trips, SUM(gps_failures) as gps_failures, SUM(unknown_locations) as unknown_locations
@@ -408,27 +389,23 @@ def load_quality_audit(taxi_type="ALL", year=None):
         WHERE {" AND ".join(filters)}
         GROUP BY 1 ORDER BY 1
     """
-    try:
-        return bq_client.query(sql).to_dataframe()
-    except Exception:
-        return pd.DataFrame()
+    try: return bq_client.query(sql).to_dataframe()
+    except Exception: return pd.DataFrame()
 
 
-def load_airport_sunburst_data(taxi_type="ALL", year=None):
-    """
-    Lädt Daten für das Sunburst-Chart (Hybrid: Alle Fares für Avg Price, Card Fares für Tip).
-    """
+# 6. Airport Sunburst
+def load_airport_sunburst_data(taxi_type="ALL", year=None, month=None):
     if not bq_client: return pd.DataFrame()
-
     filters = ["1=1"]
     filters.append(_build_sql_condition("taxi_type", taxi_type, is_string=True))
     filters.append(_build_sql_condition("year", year, is_string=False))
+    filters.append(_build_sql_condition("month", month, is_string=False))
 
     query = f"""
         SELECT 
             airport, direction, connected_borough,
             SUM(total_revenue) as total_revenue,
-            SUM(trip_count) as total_trips,
+            SUM(total_trips) as total_trips,
             SUM(total_tip) as total_tip,
             SUM(total_fare_all) as total_fare_all,
             SUM(total_fare_card) as total_fare_card
@@ -439,17 +416,18 @@ def load_airport_sunburst_data(taxi_type="ALL", year=None):
     """
     try:
         return bq_client.query(query).to_dataframe()
-    except Exception:
+    except Exception as e:
+        print(f"!!! FEHLER in load_airport_sunburst_data: {e}")  # <-- Zeigt  den Fehler im Terminal
         return pd.DataFrame()
     
-def load_tip_distribution(taxi_type="ALL", year=None, borough=None):
-    """ Lädt die Histogramm-Daten für den Tip Deep Dive. """
+def load_tip_distribution(taxi_type="ALL", year=None, borough=None, month=None):
     if not bq_client: return pd.DataFrame()
 
     filters = ["1=1"]
     filters.append(_build_sql_condition("taxi_type", taxi_type, is_string=True))
     filters.append(_build_sql_condition("year", year, is_string=False))
     filters.append(_build_sql_condition("borough", borough, is_string=True))
+    filters.append(_build_sql_condition("month", month, is_string=False)) 
 
     sql = f"""
         SELECT tip_bin, bin_order, SUM(trip_count) as trips
@@ -463,14 +441,14 @@ def load_tip_distribution(taxi_type="ALL", year=None, borough=None):
     except Exception:
         return pd.DataFrame()
 
-def load_top_tipping_zones(taxi_type="ALL", year=None, borough=None):
-    """ Lädt die Top 10 Zonen mit dem höchsten Tip % für die Sidebar. """
+def load_top_tipping_zones(taxi_type="ALL", year=None, borough=None, month=None):
     if not bq_client: return []
 
     filters = ["1=1"]
     filters.append(_build_sql_condition("taxi_type", taxi_type, is_string=True))
     filters.append(_build_sql_condition("year", year, is_string=False))
     filters.append(_build_sql_condition("borough", borough, is_string=True))
+    filters.append(_build_sql_condition("month", month, is_string=False)) 
 
     sql = f"""
         SELECT zone, SUM(trips) as total_trips, 
@@ -487,132 +465,14 @@ def load_top_tipping_zones(taxi_type="ALL", year=None, borough=None):
     except Exception:
         return []
 
-def load_seasonality_data(taxi_type="ALL", borough=None, year=None):
-    """ 
-    Lädt monatliche Daten für Saisonalität.
-    UPDATE: Akzeptiert jetzt 'year' für den Filter!
-    """
-    if not bq_client: return pd.DataFrame()
-
-    filters = ["1=1"]
-    filters.append(_build_sql_condition("taxi_type", taxi_type, is_string=True))
-    filters.append(_build_sql_condition("borough", borough, is_string=True))
-    filters.append(_build_sql_condition("year", year, is_string=False)) 
-    
-    sql = f"""
-        SELECT year, month, month_name, SUM(total_trips) as trips
-        FROM `taxi-bi-project.aggregational.agg_seasonality_borough`
-        WHERE {" AND ".join(filters)}
-        GROUP BY 1, 2, 3
-        ORDER BY year, month
-    """
-    try:
-        return bq_client.query(sql).to_dataframe()
-    except Exception:
-        return pd.DataFrame()
-
-def load_market_share_trend(borough=None):
-    """ 
-    Lädt Daten für Marktanteile. 
-    Ignoriert Taxi-Typ und Jahr bewusst, um immer den vollen Trend zu zeigen 
-    (außer du willst das Jahr hier auch filtern, aber für Trends macht "alles" meist mehr Sinn).
-    """
-    if not bq_client: return pd.DataFrame()
-
-    filters = ["1=1"]
-    filters.append(_build_sql_condition("borough", borough, is_string=True))
-    
-    sql = f"""
-        SELECT year, taxi_type, SUM(total_trips) as trips
-        FROM `taxi-bi-project.aggregational.agg_seasonality_borough`
-        WHERE {" AND ".join(filters)}
-        GROUP BY 1, 2
-        ORDER BY year
-    """
-    try:
-        return bq_client.query(sql).to_dataframe()
-    except Exception:
-        return pd.DataFrame()
-    
-def load_agg_dist_dist(taxi_type="ALL", year=None, borough=None):
-    """
-    Lädt Daten für das Distanz-Histogramm (Creative Tab).
-    """
-    if not bq_client: return pd.DataFrame()
-
-    filters = ["1=1"]
-    filters.append(_build_sql_condition("taxi_type", taxi_type, is_string=True))
-    filters.append(_build_sql_condition("year", year, is_string=False))
-    filters.append(_build_sql_condition("borough", borough, is_string=True))
-
-    sql = f"""
-        SELECT dist_bin, sort_order, SUM(trip_count) as trips
-        FROM `taxi-bi-project.aggregational.agg_distance_distribution`
-        WHERE {" AND ".join(filters)}
-        GROUP BY 1, 2
-        ORDER BY sort_order
-    """
-    try:
-        return bq_client.query(sql).to_dataframe()
-    except Exception:
-        return pd.DataFrame()
-
-def load_scatter_sample(taxi_type="ALL", year=None, borough=None, limit=2000):
-    """
-    Lädt ein Zufallssample für den Scatter-Plot (Creative Tab).
-    Greift direkt auf die Fact-Tabelle zu.
-    """
-    if not bq_client: return pd.DataFrame()
-
-    filters = ["1=1"]
-    filters.append(_build_sql_condition("source_system", taxi_type, is_string=True))
-    filters.append(_build_sql_condition("EXTRACT(YEAR FROM pickup_datetime)", year, is_string=False))
-    
-    sql = f"""
-        SELECT trip_distance, fare_amount, tip_amount, total_amount, source_system as taxi_type
-        FROM `taxi-bi-project.dimensional.Fact_Trips`
-        WHERE {" AND ".join(filters)}
-          AND trip_distance > 0 AND fare_amount > 0 AND total_amount > 0
-          AND RAND() < 0.005
-        LIMIT {limit}
-    """
-    try:
-        return bq_client.query(sql).to_dataframe()
-    except Exception:
-        return pd.DataFrame()
-
-def load_map_data(taxi_type="ALL", year=None):
-    """
-    Lädt aggregierte Daten für die Choropleth-Karte (Location Tab).
-    Falls 'load_trips_and_geometries' zu komplex ist, wird oft diese Funktion genutzt.
-    """
-    if not bq_client: return pd.DataFrame()
-    
-    filters = ["1=1"]
-    filters.append(_build_sql_condition("taxi_type", taxi_type, is_string=True))
-    filters.append(_build_sql_condition("year", year, is_string=False))
-
-    sql = f"""
-        SELECT pickup_location_id, SUM(total_trips) as trips, AVG(avg_fare) as avg_fare
-        FROM `taxi-bi-project.aggregational.agg_kpis_main` 
-        WHERE {" AND ".join(filters)}
-        GROUP BY 1
-    """
-    try:
-        return bq_client.query(sql).to_dataframe()
-    except Exception:
-        return pd.DataFrame()
-    
-def load_top_routes(taxi_type="ALL", year=None, borough=None):
-    """
-    Lädt die umsatzstärksten Routen (Pickup -> Dropoff).
-    """
+def load_top_routes(taxi_type="ALL", year=None, borough=None, month=None):
     if not bq_client: return pd.DataFrame()
 
     filters = ["1=1"]
     filters.append(_build_sql_condition("taxi_type", taxi_type, is_string=True))
     filters.append(_build_sql_condition("year", year, is_string=False))
     filters.append(_build_sql_condition("pickup_borough", borough, is_string=True))
+    filters.append(_build_sql_condition("month", month, is_string=False)) 
     
     sql = f"""
         SELECT 
@@ -626,6 +486,90 @@ def load_top_routes(taxi_type="ALL", year=None, borough=None):
         GROUP BY 1, 2
         ORDER BY revenue DESC
         LIMIT 10
+    """
+    try:
+        return bq_client.query(sql).to_dataframe()
+    except Exception:
+        return pd.DataFrame()
+
+def load_agg_dist_dist(taxi_type="ALL", year=None, borough=None):
+    if not bq_client: return pd.DataFrame()
+    filters = ["1=1"]
+    filters.append(_build_sql_condition("taxi_type", taxi_type, is_string=True))
+    filters.append(_build_sql_condition("year", year, is_string=False))
+    filters.append(_build_sql_condition("borough", borough, is_string=True))
+    sql = f"""
+        SELECT dist_bin, sort_order, SUM(trip_count) as trips
+        FROM `taxi-bi-project.aggregational.agg_distance_distribution`
+        WHERE {" AND ".join(filters)}
+        GROUP BY 1, 2
+        ORDER BY sort_order
+    """
+    try: return bq_client.query(sql).to_dataframe()
+    except Exception: return pd.DataFrame()
+
+def load_scatter_sample(taxi_type="ALL", year=None, borough=None, limit=2000):
+    if not bq_client: return pd.DataFrame()
+    filters = ["1=1"]
+    filters.append(_build_sql_condition("source_system", taxi_type, is_string=True))
+    filters.append(_build_sql_condition("EXTRACT(YEAR FROM pickup_datetime)", year, is_string=False))
+    sql = f"""
+        SELECT trip_distance, fare_amount, tip_amount, total_amount, source_system as taxi_type
+        FROM `taxi-bi-project.dimensional.Fact_Trips`
+        WHERE {" AND ".join(filters)} AND trip_distance > 0 AND fare_amount > 0 AND total_amount > 0 AND RAND() < 0.005
+        LIMIT {limit}
+    """
+    try: return bq_client.query(sql).to_dataframe()
+    except Exception: return pd.DataFrame()
+
+def load_map_data(taxi_type="ALL", year=None):
+    if not bq_client: return pd.DataFrame()
+    filters = ["1=1"]
+    filters.append(_build_sql_condition("taxi_type", taxi_type, is_string=True))
+    filters.append(_build_sql_condition("year", year, is_string=False))
+    sql = f"""
+        SELECT pickup_location_id, SUM(total_trips) as trips, AVG(avg_fare) as avg_fare
+        FROM `taxi-bi-project.aggregational.agg_kpis_main` 
+        WHERE {" AND ".join(filters)} GROUP BY 1
+    """
+    try: return bq_client.query(sql).to_dataframe()
+    except Exception: return pd.DataFrame()
+
+def load_seasonality_data(taxi_type="ALL", borough=None, year=None):
+    if not bq_client: return pd.DataFrame()
+    filters = ["1=1"]
+    filters.append(_build_sql_condition("taxi_type", taxi_type, is_string=True))
+    filters.append(_build_sql_condition("borough", borough, is_string=True))
+    filters.append(_build_sql_condition("year", year, is_string=False))
+    sql = f"""
+        SELECT year, month, month_name, SUM(total_trips) as trips
+        FROM `taxi-bi-project.aggregational.agg_seasonality_borough`
+        WHERE {" AND ".join(filters)}
+        GROUP BY 1, 2, 3 ORDER BY year, month
+    """
+    try: return bq_client.query(sql).to_dataframe()
+    except Exception: return pd.DataFrame()
+
+def load_market_share_trend(taxi_type="ALL", year=None, borough=None, month=None):
+    """ 
+    Lädt Daten für Marktanteile (Taxi War).
+    UPDATE: Lädt jetzt auf MONATS-Ebene, damit auch bei Auswahl eines einzelnen 
+    Jahres ein Verlauf (Jan-Dez) sichtbar ist.
+    """
+    if not bq_client: return pd.DataFrame()
+
+    filters = ["1=1"]
+    filters.append(_build_sql_condition("taxi_type", taxi_type, is_string=True))
+    filters.append(_build_sql_condition("borough", borough, is_string=True))
+    filters.append(_build_sql_condition("year", year, is_string=False))
+    filters.append(_build_sql_condition("month", month, is_string=False))
+    
+    sql = f"""
+        SELECT year, month, taxi_type, SUM(total_trips) as trips
+        FROM `taxi-bi-project.aggregational.agg_seasonality_borough`
+        WHERE {" AND ".join(filters)}
+        GROUP BY 1, 2, 3
+        ORDER BY year, month
     """
     try:
         return bq_client.query(sql).to_dataframe()
