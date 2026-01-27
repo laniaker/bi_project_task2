@@ -32,159 +32,113 @@ app = Dash(
 # UI-Bausteine: Sidebar-Filter
 # ---------------------------------------------------
 def sidebar_filters():
-    """
-    Sidebar mit Umschalter zwischen 'Flexibel' (beliebige Auswahl) 
-    und 'Zeitraum' (Von-Bis).
-    """
-    # Listen für die Dropdowns vorbereiten
+    # Helper-Listen (Monate bleiben statisch, Jahre werden jetzt dynamisch)
+    import calendar
     month_names = [{"label": calendar.month_name[i], "value": i} for i in range(1, 13)]
-    years = [{"label": str(y), "value": y} for y in range(2019, 2026)]
 
     return html.Div(
         className="card",
+        style={"padding": "15px"}, 
         children=[
-            html.P("Filter", className="section-title"),
+            # Header
+            html.Div(
+                style={"display": "flex", "justifyContent": "space-between", "alignItems": "center", "marginBottom": "10px"},
+                children=[
+                    # HIER GEÄNDERT: Label statt P für Einheitlichkeit
+                    html.Label("Filter", className="filter-label", style={"marginBottom": "0"}),
+                ]
+            ),
             
+            # 1. MODUS SWITCH
+            html.Div(
+                className="radio-group",
+                style={"marginBottom": "20px"},
+                children=[
+                    dcc.RadioItems(
+                        id="time-filter-mode",
+                        options=[
+                            {"label": "Einzelauswahl", "value": "flexible"},
+                            {"label": "Zeitstrahl", "value": "range"},
+                        ],
+                        value="flexible",
+                        labelStyle={"display": "inline-block", "margin": "0"}, 
+                        inputStyle={"marginRight": "5px"}
+                    )
+                ]
+            ),
+
             html.Div(
                 className="filters",
                 children=[
-                    # 1. Taxi-Typ (Bleibt immer sichtbar)
-                    html.Div(
-                        [
-                            html.Div("Taxi-Typ", className="filter-label"),
-                            dcc.Dropdown(
-                                id="filter-taxi-type",
-                                options=[], # Wird via Callback gefüllt
-                                value=[], 
-                                placeholder="Alle Typen",
-                                multi=True,    
-                                clearable=True, 
-                            ),
-                        ],
-                        style={"marginBottom": "20px"}
-                    ),
+                    # Taxi Typ
+                    html.Div([
+                        html.Label("Taxi Typ", className="filter-label"),
+                        dcc.Checklist(
+                            id="filter-taxi-type",
+                            options=[], # Wird dynamisch befüllt
+                            value=["YELLOW", "GREEN", "FHV"], 
+                            inline=True,
+                            className="taxi-checklist"
+                        )
+                    ], style={"marginBottom": "20px"}),
 
-                    # 2. Der Modus-Schalter (Radio Buttons)
-                    html.Div(
-                        style={
-                            "backgroundColor": "#f8fafc", 
-                            "padding": "10px", 
-                            "borderRadius": "8px",
-                            "marginBottom": "15px",
-                            "border": "1px solid #e2e8f0"
-                        },
-                        children=[
-                            html.Label("Zeit-Modus:", className="filter-label", style={"marginBottom": "8px"}),
-                            dcc.RadioItems(
-                                id="time-filter-mode",
-                                options=[
-                                    {"label": " Flexibel (Einzelwahl)", "value": "flexible"},
-                                    {"label": " Zeitraum (Von → Bis)", "value": "range"},
-                                ],
-                                value="flexible", # Standard
-                                labelStyle={"display": "block", "cursor": "pointer", "marginBottom": "4px", "fontSize": "13px"},
-                                inputStyle={"marginRight": "8px"}
-                            )
-                        ]
-                    ),
-
-                    # 3. CONTAINER A: FLEXIBEL 
+                    # --- CONTAINER A: FLEXIBEL (Einzelauswahl) ---
                     html.Div(
                         id="container-time-flexible",
                         children=[
-                            html.Div(
-                                [
-                                    html.Div("Jahre wählen", className="filter-label"),
-                                    dcc.Dropdown(
-                                        id="filter-year",
-                                        options=years, 
-                                        value=[],      
-                                        placeholder="Jahre...",
-                                        multi=True,    
-                                    ),
-                                ],
-                                style={"marginBottom": "10px"}
-                            ),
-                            html.Div(
-                                [
-                                    html.Div("Monate wählen", className="filter-label"),
-                                    dcc.Dropdown(
-                                        id="filter-month",
-                                        options=month_names,
-                                        value=[],   
-                                        placeholder="Monate...",
-                                        multi=True,    
-                                    ),
-                                ]
-                            ),
+                            html.Div([
+                                html.Label("Jahre", className="filter-label"),
+                                # HIER GEÄNDERT: options=[]
+                                dcc.Dropdown(id="filter-year", options=[], value=[], placeholder="Wählen...", multi=True)
+                            ], style={"marginBottom": "10px"}),
+                            html.Div([
+                                html.Label("Monate", className="filter-label"),
+                                dcc.Dropdown(id="filter-month", options=month_names, value=[], placeholder="Wählen...", multi=True)
+                            ])
                         ]
                     ),
 
-                    # 4. CONTAINER B: ZEITRAUM 
+                    # --- CONTAINER B: ZEITRAUM (Range / Zeitstrahl) ---
                     html.Div(
                         id="container-time-range",
-                        style={"display": "none"}, 
+                        style={"display": "none"},
                         children=[
-                            html.Label("Start Datum", className="filter-label", style={"marginTop": "5px"}),
                             html.Div(
-                                style={"display": "flex", "gap": "5px", "marginBottom": "10px"},
+                                style={"display": "flex", "justifyContent": "space-between", "alignItems": "center", "marginBottom": "5px"},
                                 children=[
-                                    dcc.Dropdown(
-                                        id="range-start-month",
-                                        options=month_names,
-                                        placeholder="Monat",
-                                        style={"flex": 1},
-                                        clearable=False
-                                    ),
-                                    dcc.Dropdown(
-                                        id="range-start-year",
-                                        options=years,
-                                        placeholder="Jahr",
-                                        style={"flex": 1},
-                                        clearable=False
-                                    ),
+                                    html.Label("Zeitraum definieren", className="filter-label", style={"marginBottom": 0}),
+                                    html.Button("Reset", id="btn-reset-range", className="btn-ghost-sm")
                                 ]
                             ),
                             
-                            # End Datum
-                            html.Label("End Datum", className="filter-label"),
+                            # Start
+                            html.Div(
+                                style={"display": "flex", "gap": "5px", "marginBottom": "8px"},
+                                children=[
+                                    dcc.Dropdown(id="range-start-month", options=month_names, placeholder="Start M.", style={"flex": 1}, clearable=False),
+                                    # HIER GEÄNDERT: options=[]
+                                    dcc.Dropdown(id="range-start-year", options=[], placeholder="J.", style={"flex": 0.6}, clearable=False),
+                                ]
+                            ),
+                            
+                            # Ende
                             html.Div(
                                 style={"display": "flex", "gap": "5px"},
                                 children=[
-                                    dcc.Dropdown(
-                                        id="range-end-month",
-                                        options=month_names,
-                                        placeholder="Monat",
-                                        style={"flex": 1},
-                                        clearable=False
-                                    ),
-                                    dcc.Dropdown(
-                                        id="range-end-year",
-                                        options=years,
-                                        placeholder="Jahr",
-                                        style={"flex": 1},
-                                        clearable=False
-                                    ),
+                                    dcc.Dropdown(id="range-end-month", options=month_names, placeholder="Ende M.", style={"flex": 1}, clearable=False),
+                                    # HIER GEÄNDERT: options=[]
+                                    dcc.Dropdown(id="range-end-year", options=[], placeholder="J.", style={"flex": 0.6}, clearable=False),
                                 ]
                             ),
-                            html.P("Filtert exakt den Zeitstrahl zwischen Start und Ende.", 
-                                   style={"fontSize": "11px", "color": "#64748b", "marginTop": "10px", "fontStyle": "italic"})
+                            html.P("Zeitraum zwischen Start und Ende.", style={"fontSize": "10px", "color": "#94a3b8", "marginTop": "6px"})
                         ]
                     ),
 
-                    # 5. Borough (Immer sichtbar)
-                    html.Div(
-                        [
-                            html.Div("Borough", className="filter-label", style={"marginTop": "20px"}),
-                            dcc.Dropdown(
-                                id="filter-borough",
-                                options=[], 
-                                value=[],      
-                                placeholder="Alle Boroughs",
-                                multi=True,    
-                            ),
-                        ]
-                    ),
+                    # Borough
+                    html.Div([
+                        html.Label("Borough", className="filter-label", style={"marginTop": "15px"}),
+                        dcc.Dropdown(id="filter-borough", options=[], value=[], placeholder="Alle...", multi=True)
+                    ]),
                 ],
             ),
         ],
@@ -346,6 +300,20 @@ def toggle_filter_mode(mode):
     else:
         # Flexibel anzeigen (Block), Range ausblenden (None)
         return {"display": "block"}, {"display": "none"}
+    
+# ---------------------------------------------------
+# Callback: Zeitstrahl leeren (Reset Button Funktion)
+# ---------------------------------------------------
+@app.callback(
+    [Output("range-start-year", "value"),
+     Output("range-start-month", "value"),
+     Output("range-end-year", "value"),
+     Output("range-end-month", "value")],
+    Input("btn-reset-range", "n_clicks"),
+    prevent_initial_call=True
+)
+def reset_range_filters(n_clicks):
+    return None, None, None, None
 
 # ---------------------------------------------------
 # Registrierung der Callbacks (Logik)

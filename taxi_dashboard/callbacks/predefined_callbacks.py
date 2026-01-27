@@ -36,30 +36,37 @@ def register_predefined_callbacks(app):
     # ---------------------------------------------------
     @app.callback(
         Output("filter-year", "options"),
+        Output("range-start-year", "options"), 
+        Output("range-end-year", "options"),   
         Output("filter-borough", "options"),
         Output("filter-taxi-type", "options"), 
-        Output("filter-month", "options"), # NEU
+        Output("filter-month", "options"),
         Input("filter-taxi-type", "id"), 
     )
     def init_filter_options(_):
-        # Hinweis: get_filter_options muss jetzt 4 Werte zurückgeben!
         results = get_filter_options()
         
-        # Fallback, falls data_access.py noch alt ist
         if len(results) == 3:
             years, boroughs, taxi_types = results
             months = list(range(1, 13))
         else:
             years, boroughs, taxi_types, months = results
 
+        # Wunsch-Reihenfolge für Taxis (wie besprochen)
+        desired_order = ["YELLOW", "GREEN", "FHV"]
+        taxi_types_sorted = sorted(
+            taxi_types, 
+            key=lambda x: desired_order.index(x) if x in desired_order else 999
+        )
+
+        # Optionen erstellen
         year_opts = [{"label": str(y), "value": y} for y in years]
         borough_opts = [{"label": b, "value": b} for b in boroughs]
-        taxi_opts = [{"label": t, "value": t} for t in taxi_types]
-        
-        # Monats-Dropdown füllen (1 -> January, etc.)
+        taxi_opts = [{"label": t, "value": t} for t in taxi_types_sorted]
         month_opts = [{"label": calendar.month_name[m], "value": m} for m in months]
 
-        return year_opts, borough_opts, taxi_opts, month_opts
+        # WICHTIG: year_opts wird jetzt dreimal zurückgegeben
+        return year_opts, year_opts, year_opts, borough_opts, taxi_opts, month_opts
 
     # ---------------------------------------------------
     # Chart 1: Peak Hours (Standard Balkendiagramm)

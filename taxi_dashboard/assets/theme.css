@@ -200,9 +200,13 @@ html, body {
 }
 
 .filter-label {
+  display: block;          /* Sicherstellen, dass Margin greift */
   font-size: 12px;
+  font-weight: 600;
   color: var(--muted);
-  margin-bottom: 6px;
+  margin-bottom: 8px;      /* <--- HIER: Der neue, einheitliche Abstand */
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 /* Z-Index Fix für Dropdown-Menüs */
@@ -399,3 +403,218 @@ html, body {
         max-height: 300px; /* Sidebar begrenzen auf Mobile */
     }
   }
+
+/* ==========================================================================
+   Switch als Cards (Deep Dive vs. Zeitstrahl)
+   ========================================================================== */
+    
+  /* 1. Der Container */
+     .radio-group > div {
+      display: flex !important;    
+      gap: 20px !important;        
+      background-color: transparent !important; 
+      padding: 0 !important;
+      width: 100%;
+      margin-bottom: 5px;          
+    }
+  
+    /* 2. Die Buttons (Inaktiv) */
+    .radio-group label {
+      flex: 1;
+      text-align: center;
+      padding: 9px 0;          
+      margin: 0 !important;
+      cursor: pointer;
+      
+      /* Optik: Grauer Kasten */
+      background-color: #f1f5f9; 
+      border-radius: 8px;
+      border: 1px solid transparent; 
+
+      /* Text */
+      font-size: 13px;           
+      font-weight: 500;
+      color: var(--muted);
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      
+      /* Zentrierung */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+  
+    .radio-group input {
+      display: none;
+    }
+  
+    /* 3. Der AKTIVE Zustand */
+    .radio-group label:has(input:checked) {
+      background-color: #ffffff; 
+      color: var(--primary);
+      font-weight: 600;
+      border-color: var(--border);
+      
+      /* Schatten für den Pop-Out Effekt */
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      transform: translateY(-2px); /* Button hebt sich leicht ab */
+    }
+  
+    /* 4. Hover */
+    .radio-group label:hover:not(:has(input:checked)) {
+      background-color: #e2e8f0; 
+      color: var(--text);
+    }
+    
+  /* ==========================================================================
+     Ghost Button (für Reset)
+     ========================================================================== */
+  .btn-ghost-sm {
+    background: none;
+    border: none;
+    color: var(--danger); /* Nutzt deine definierte rote Farbe */
+    font-size: 11px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: background 0.2s;
+    font-weight: 500;
+  }
+  
+  .btn-ghost-sm:hover {
+    background-color: var(--danger-soft); /* Dein definiertes weiches Rot */
+    text-decoration: none;
+  }
+
+
+/* ==========================================================================
+   Taxi-Selector als "Chips" (Full Width & Fixed Order Colors)
+   ========================================================================== */
+
+/* 1. Container Layout */
+.taxi-checklist {
+  display: flex;
+  width: 100%;        
+  gap: 8px;           /* Abstand zwischen den Buttons */
+}
+
+/* 2. Basis-Style für das Label (Der Button) */
+.taxi-checklist label {
+  flex: 1;
+  position: relative;
+  cursor: pointer;
+  padding: 9px 4px;   
+  border-radius: 8px; 
+  font-size: 13px;    
+  font-weight: 500;   
+  border: 1px solid var(--border);
+  background-color: #ffffff;
+  color: var(--muted);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  margin-right: 0 !important;
+}
+
+/* 3. Original Checkbox verstecken */
+.taxi-checklist input {
+  display: none;
+}
+
+/* 4. Hover Effekt (wenn inaktiv) */
+.taxi-checklist label:hover:not(:has(input:checked)) {
+  background-color: #f1f5f9;
+  color: var(--text);
+  border-color: #cbd5e1;
+}
+
+/* ==========================================================================
+   FARB-LOGIK (Basiert auf fester Reihenfolge: 1.Yellow, 2.Green, 3.FHV)
+   ========================================================================== */
+
+/* --- 1. YELLOW TAXI --- */
+.taxi-checklist label:nth-of-type(1):has(input:checked) {
+  background-color: #fef08a; /* Hellgelb */
+  color: #854d0e;            /* Dunkelgelb Text */
+  border-color: #facc15;     /* Satter Rand */
+  box-shadow: 0 1px 3px rgba(234, 179, 8, 0.3);
+}
+
+/* --- 2. GREEN TAXI --- */
+.taxi-checklist label:nth-of-type(2):has(input:checked) {
+  background-color: #dcfce7; /* Hellgrün */
+  color: #166534;            /* Dunkelgrün Text */
+  border-color: #4ade80;     /* Satter Rand */
+  box-shadow: 0 1px 3px rgba(34, 197, 94, 0.3);
+}
+
+/* --- 3. FHV --- */
+.taxi-checklist label:nth-of-type(3):has(input:checked) {
+  background-color: #f1f5f9; /* Hellgrau */
+  color: #334155;            /* Dunkelgrau Text */
+  border-color: #94a3b8;     /* Satter Rand */
+  box-shadow: 0 1px 3px rgba(100, 116, 139, 0.3);
+}
+
+/* ==========================================================================
+   Dropdown Größenanpassung (React-Select)
+   ========================================================================== */
+.Select-control, 
+.Select-menu-outer {
+  font-size: 13px !important; /* Gleiche Größe wie Buttons */
+}
+
+.Select-value-label, 
+.Select-placeholder {
+  line-height: 36px !important; /* Vertikale Zentrierung */
+}
+
+/* ==========================================================================
+   Kompakter Multi-Select (Chips & Zeilenhöhe)
+   ========================================================================== */
+
+/* 1. Die Chips (ausgewählte Werte) kleiner machen */
+.Select--multi .Select-value {
+  background-color: var(--primary-soft) !important;
+  border: 1px solid rgba(37, 99, 235, 0.2) !important;
+  color: var(--primary) !important;
+  border-radius: 4px !important;
+  
+  /* HIER: Kleineres Padding und engere Margins */
+  margin: 2px 4px 2px 0 !important;
+  padding: 0 !important;
+  font-size: 12px !important;
+  line-height: 1.4 !important;
+  height: 25px !important; /* Fixe Höhe für die Chips */
+}
+
+/* 2. Den Text innerhalb des Chips zentrieren */
+.Select--multi .Select-value-label {
+  padding: 0 8px !important;
+  line-height: 20px !important;
+}
+
+/* 3. Das "X" zum Löschen verkleinern */
+.Select--multi .Select-value-icon {
+  padding: 0 5px !important;
+  line-height: 20px !important;
+  border-right: 1px solid rgba(37, 99, 235, 0.2) !important;
+}
+
+/* 4. Das gesamte Eingabefeld in der Höhe bändigen */
+.Select-control {
+  min-height: 36px !important; /* Entspricht deinen Taxi-Buttons */
+  height: auto !important;
+  padding: 2px 4px !important;
+}
+
+/* 5. Den blinkenden Cursor und Placeholder ausrichten */
+.Select-input {
+  height: 28px !important;
+  margin-left: 5px !important;
+}
+.Select-placeholder {
+  line-height: 32px !important;
+}
