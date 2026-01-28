@@ -72,13 +72,98 @@ def layout_creative():
                     ),
                 ],
             ),
-            
+
+            # ---------------------------------------------------
+            # 3) Borough Flows: Pickup → Dropoff
+            # ---------------------------------------------------
+            html.Div(
+                className="card",
+                children=[
+                    html.Div(
+                        className="card-head",
+                        children=[
+                            html.H3("Pickup → Dropoff Flows"),
+                            html.P("Dominante Verkehrsströme."),
+                        ],
+                    ),
+                    dcc.Graph(
+                        id="fig-flows",
+                        style={"height": "340px"},
+                        config={"displayModeBar": False},
+                    ),
+                ],
+            ),
+
+            # ---------------------------------------------------
+            # 4) KPI: Revenue Efficiency
+            # ---------------------------------------------------
+            html.Div(
+                className="card",
+                children=[
+                    html.Div(
+                        className="card-head",
+                        children=[
+                            html.H3("Revenue Efficiency"),
+                            html.P("Umsatz pro Minute (Boxplot)."),
+                        ],
+                    ),
+                    dcc.Graph(
+                        id="fig-kpi-rev-eff",
+                        style={"height": "340px"},
+                        config={"displayModeBar": False},
+                    ),
+                ],
+            ),
+
+            # ---------------------------------------------------
+            # 7) Tip Sensitivity Curve
+            # ---------------------------------------------------
+            html.Div(
+                className="card",
+                children=[
+                    html.Div(
+                        className="card-head",
+                        children=[
+                            html.H3("Tip Sensitivity Curve"),
+                            html.P("Tip% in Abhängigkeit von Trip-Dauer (Binning + Trend)."),
+                        ],
+                    ),
+                    dcc.Graph(
+                        id="fig-tip-sensitivity",
+                        style={"height": "340px"},
+                        config={"displayModeBar": False},
+                    ),
+                ],
+            ),
+
+            # ---------------------------------------------------
+            # 6) Efficiency Map: Avg Speed per Pickup Zone
+            # ---------------------------------------------------
+            html.Div(
+                className="card",
+                style={"gridColumn": "1 / -1"},
+                children=[
+                    html.Div(
+                        className="card-head",
+                        children=[
+                            html.H3("Efficiency Map (Avg Speed)"),
+                            html.P("Ø Geschwindigkeit pro Pickup-Zone (Distance / Duration)."),
+                        ],
+                    ),
+                    dcc.Graph(
+                        id="fig-efficiency-map",
+                        style={"height": "460px"},
+                        config={"displayModeBar": False},
+                    ),
+                ],
+            ),
+
             # ---------------------------------------------------
             # 5) IT & Data Quality Audit (Breite Card unten)
             # ---------------------------------------------------
             html.Div(
                 className="card",
-                style={"gridColumn": "1 / -1"}, 
+                style={"gridColumn": "1 / -1"},
                 children=[
                     html.Div(
                         className="card-head",

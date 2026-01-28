@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import json
 from google.cloud import bigquery
@@ -604,6 +605,177 @@ def load_market_share_trend(taxi_type="ALL", borough=None, mode="flexible", year
     """
     try: return bq_client.query(sql).to_dataframe()
     except Exception: return pd.DataFrame()
+
+def load_efficiency_map_speed(
+    taxi_type="ALL",
+    borough=None,
+    mode="flexible",
+    years=None,
+    months=None,
+    sy=None,
+    sm=None,
+    ey=None,
+    em=None,
+):
+    """
+    Efficiency Map:
+    Avg speed per pickup taxi zone.
+    speed_mph = SUM(trip_distance) / (SUM(duration_minutes)/60)
+    Returns: (df, geojson_featurecollection)
+    """
+    if not bq_client:
+        return pd.DataFrame(), {}
+
+    filters = ["1=1"]
+
+    # Taxi-Type kommt aus Fact_Trips.source_system
+    filters.append(_build_sql_condition("f.source_system", taxi_type, is_string=True))
+
+    # Borough kommt aus Geo-Subquery
+    filters.append(_build_sql_condition("loc.borough", borough, is_string=True))
+
+    # Zeitfilter auf pickup_datetime (Fact_Trips)
+    filters.append(
+        _get_time_filter_sql(
+            mode, years, months, sy, sm, ey, em,
+            date_col="f.pickup_datetime"
+        )
+    )
+
+    # Sanity filters
+    filters.append("f.duration_minutes IS NOT NULL AND f.duration_minutes > 0")
+    filters.append("f.trip_distance IS NOT NULL AND f.trip_distance > 0")
+    filters.append("f.duration_minutes <= 240")
+    filters.append("f.trip_distance <= 200")
+    filters.append("loc.geojson_str IS NOT NULL")
+    filters.append("loc.borough NOT IN ('Unknown', 'NV')")
+
+    sql = f"""
+        WITH loc AS (
+            SELECT DISTINCT
+                CAST(location_id AS INT64) AS location_id,
+                CAST(zone AS STRING) AS zone,
+                CAST(borough AS STRING) AS borough,
+                geojson_str
+            FROM `taxi-bi-project.aggregational.agg_location_map`
+            WHERE geojson_str IS NOT NULL
+        )
+        SELECT
+            CAST(f.pickup_location_id AS INT64) AS location_id,
+            loc.zone,
+            loc.borough,
+            loc.geojson_str,
+
+            COUNT(1) AS trips,
+            AVG(f.trip_distance) AS avg_distance_mi,
+            AVG(f.duration_minutes) AS avg_duration_min,
+
+            SAFE_DIVIDE(SUM(f.trip_distance), (SUM(f.duration_minutes) / 60.0)) AS avg_speed_mph
+        FROM `{TABLE_FACT}` f
+        JOIN loc
+          ON CAST(f.pickup_location_id AS INT64) = loc.location_id
+        WHERE {" AND ".join(filters)}
+        GROUP BY 1, 2, 3, 4
+    """
+
+    try:
+        df = bq_client.query(sql).to_dataframe()
+        if df.empty:
+            return df, {}
+
+        features = []
+        for _, row in df.iterrows():
+            if row.get("geojson_str"):
+                geom = json.loads(row["geojson_str"])
+                features.append(
+                    {
+                        "type": "Feature",
+                        "geometry": geom,
+                        "id": str(int(row["location_id"])),
+                        "properties": {
+                            "zone": row["zone"],
+                            "borough": row["borough"],
+                            "trips": int(row["trips"]),
+                            "avg_speed_mph": float(row["avg_speed_mph"]) if row["avg_speed_mph"] is not None else None,
+                            "avg_duration_min": float(row["avg_duration_min"]) if row["avg_duration_min"] is not None else None,
+                            "avg_distance_mi": float(row["avg_distance_mi"]) if row["avg_distance_mi"] is not None else None,
+                        },
+                    }
+                )
+
+        return df, {"type": "FeatureCollection", "features": features}
+
+    except Exception as e:
+        print(f"!!! FEHLER in load_efficiency_map_speed: {e}")
+        return pd.DataFrame(), {}
+
+
+
+
+def load_tip_sensitivity_by_duration(
+    taxi_type="ALL",
+    borough=None,
+    mode="flexible",
+    years=None,
+    months=None,
+    sy=None,
+    sm=None,
+    ey=None,
+    em=None,
+    bin_minutes=2,
+    max_minutes=120,
+):
+    """
+    Tip Sensitivity Curve:
+    Tip% vs. duration bucket (minutes).
+    tip_pct = SUM(tip_amount) / SUM(fare_amount) * 100
+    Returns df with duration_bin, avg_tip_pct, trips
+    """
+    if not bq_client:
+        return pd.DataFrame()
+
+    filters = ["1=1"]
+    filters.append(_build_sql_condition("f.source_system", taxi_type, is_string=True))
+    filters.append(_build_sql_condition("loc.Borough", borough, is_string=True))
+    filters.append(
+        _get_time_filter_sql(
+            mode, years, months, sy, sm, ey, em,
+            date_col="f.pickup_datetime"
+        )
+    )
+
+    # robust tip%: fare_amount > 0, duration > 0
+    filters.append("f.fare_amount IS NOT NULL AND f.fare_amount > 0")
+    filters.append("f.duration_minutes IS NOT NULL AND f.duration_minutes > 0")
+    filters.append(f"f.duration_minutes <= {int(max_minutes)}")
+    filters.append("f.tip_amount IS NOT NULL")
+    filters.append("loc.Borough != 'Unknown'")
+
+    sql = f"""
+        WITH binned AS (
+            SELECT
+                CAST(FLOOR(f.duration_minutes / {int(bin_minutes)}) * {int(bin_minutes)} AS INT64) AS duration_bin,
+                f.tip_amount,
+                f.fare_amount
+            FROM `taxi-bi-project.dimensional.Fact_Trips` f
+            JOIN `taxi-bi-project.dimensional.dim_location` loc
+              ON f.pickup_location_id = loc.location_id
+            WHERE {" AND ".join(filters)}
+        )
+        SELECT
+            duration_bin,
+            COUNT(1) AS trips,
+            SAFE_DIVIDE(SUM(tip_amount), SUM(fare_amount)) * 100 AS avg_tip_pct
+        FROM binned
+        GROUP BY 1
+        ORDER BY 1
+    """
+
+    try:
+        return bq_client.query(sql).to_dataframe()
+    except Exception:
+        return pd.DataFrame()
+
 
 def load_hourly_distance(taxi_type="ALL", borough=None, mode="flexible", years=None, months=None, sy=None, sm=None, ey=None, em=None):
     if not bq_client: return pd.DataFrame()
