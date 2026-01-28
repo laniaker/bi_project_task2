@@ -72,48 +72,6 @@ def layout_creative():
                     ),
                 ],
             ),
-
-            # ---------------------------------------------------
-            # 3) Borough Flows: Pickup → Dropoff
-            # ---------------------------------------------------
-            html.Div(
-                className="card",
-                children=[
-                    html.Div(
-                        className="card-head",
-                        children=[
-                            html.H3("Pickup → Dropoff Flows"),
-                            html.P("Dominante Verkehrsströme."),
-                        ],
-                    ),
-                    dcc.Graph(
-                        id="fig-flows",
-                        style={"height": "340px"},
-                        config={"displayModeBar": False},
-                    ),
-                ],
-            ),
-
-            # ---------------------------------------------------
-            # 4) KPI: Revenue Efficiency
-            # ---------------------------------------------------
-            html.Div(
-                className="card",
-                children=[
-                    html.Div(
-                        className="card-head",
-                        children=[
-                            html.H3("Revenue Efficiency"),
-                            html.P("Umsatz pro Minute (Boxplot)."),
-                        ],
-                    ),
-                    dcc.Graph(
-                        id="fig-kpi-rev-eff",
-                        style={"height": "340px"},
-                        config={"displayModeBar": False},
-                    ),
-                ],
-            ),
             
             # ---------------------------------------------------
             # 5) IT & Data Quality Audit (Breite Card unten)

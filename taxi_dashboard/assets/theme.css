@@ -618,3 +618,65 @@ html, body {
 .Select-placeholder {
   line-height: 32px !important;
 }
+
+/* ==========================================================================
+   INSIGHT CARDS (Uniform Layout)
+   ========================================================================== */
+
+   .insight-card {
+    background: #ffffff;        /* Weißer Hintergrund wie die großen Cards */
+    border: 1px solid #e2e8f0;  /* Dein Standard-Border (var(--border)) */
+    border-radius: 8px;         /* Gleiche Rundung */
+    padding: 16px;              /* Einheitliches Padding überall */
+    margin-bottom: 12px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    
+    /* Flexbox, damit Inhalte sauber untereinander stehen */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  
+  /* 1. Der Titel (oben klein) */
+  .insight-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #64748b; /* var(--muted) */
+    margin-bottom: 6px;
+    font-weight: 600;
+    display: block;
+  }
+  
+  /* 2. Der Hauptwert (groß & fett) */
+  .insight-value {
+    font-size: 18px; /* Alle Werte exakt gleich groß */
+    font-weight: 700;
+    color: #0f172a;  /* var(--text) */
+    margin: 0 0 8px 0;
+    line-height: 1.2;
+  }
+  
+  /* 3. Der Erklärungstext / Zusatz (unten) */
+  .insight-sub {
+    font-size: 12px;
+    color: #64748b; /* var(--muted) */
+    margin: 0;
+    line-height: 1.4;
+  }
+  
+  /* --- Helper für die Progress Bar in Box 3 --- */
+  .progress-container {
+    width: 100%;
+    background-color: #f1f5f9;
+    border-radius: 4px;
+    height: 6px;
+    margin-top: 0;
+    overflow: hidden;
+  }
+  
+  .progress-bar-fill {
+    background-color: #2563eb; /* var(--primary) */
+    height: 100%;
+    border-radius: 4px;
+  }

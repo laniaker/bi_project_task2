@@ -604,3 +604,201 @@ def load_market_share_trend(taxi_type="ALL", borough=None, mode="flexible", year
     """
     try: return bq_client.query(sql).to_dataframe()
     except Exception: return pd.DataFrame()
+
+def load_hourly_distance(taxi_type="ALL", borough=None, mode="flexible", years=None, months=None, sy=None, sm=None, ey=None, em=None):
+    if not bq_client: return pd.DataFrame()
+    
+    filters = ["1=1"]
+    
+    # 1. Taxi Typ Filter (Spalte heißt in Fact_Trips oft 'source_system')
+    filters.append(_build_sql_condition("source_system", taxi_type, is_string=True))
+    
+    # 2. Zeit Filter
+    filters.append(_get_time_filter_sql(mode, years, months, sy, sm, ey, em, date_col="pickup_datetime"))
+
+    # 3. BOROUGH FILTER (Das ist der neue, wichtige Teil!)
+    # Da Fact_Trips keine 'borough' Spalte hat, filtern wir über die Location ID
+    if borough:
+        if not isinstance(borough, list): borough = [borough]
+        # Sicherstellen, dass die Liste nicht leer ist
+        if len(borough) > 0:
+            safe_boroughs = "', '".join(borough)
+            filters.append(f"pickup_location_id IN (SELECT location_id FROM `{TABLE_DIM_LOC}` WHERE borough IN ('{safe_boroughs}'))")
+
+    sql = f"""
+        SELECT 
+            EXTRACT(HOUR FROM pickup_datetime) as hour,
+            AVG(trip_distance) as avg_distance
+        FROM `{TABLE_FACT}`
+        WHERE {" AND ".join(filters)} 
+          AND trip_distance > 0 AND trip_distance < 100
+        GROUP BY 1
+        ORDER BY 1
+    """
+    try: return bq_client.query(sql).to_dataframe()
+    except Exception: return pd.DataFrame()
+
+def load_weekly_passenger_split(taxi_type="ALL", borough=None, mode="flexible", years=None, months=None, sy=None, sm=None, ey=None, em=None):
+    if not bq_client: return pd.DataFrame()
+    
+    filters = ["1=1"]
+    
+    # 1. Taxi Typ
+    filters.append(_build_sql_condition("source_system", taxi_type, is_string=True))
+    
+    # 2. Zeit
+    filters.append(_get_time_filter_sql(mode, years, months, sy, sm, ey, em, date_col="pickup_datetime"))
+
+    # 3. BOROUGH FILTER (Der neue Teil)
+    if borough:
+        if not isinstance(borough, list): borough = [borough]
+        if len(borough) > 0:
+            safe_boroughs = "', '".join(borough)
+            filters.append(f"pickup_location_id IN (SELECT location_id FROM `{TABLE_DIM_LOC}` WHERE borough IN ('{safe_boroughs}'))")
+
+    sql = f"""
+        SELECT 
+            FORMAT_DATE('%A', DATE(pickup_datetime)) as day_name,
+            EXTRACT(DAYOFWEEK FROM pickup_datetime) as day_num, -- 1=Sun, 2=Mon...
+            EXTRACT(HOUR FROM pickup_datetime) as hour,
+            CASE 
+                WHEN passenger_count = 1 THEN '1 Passagier'
+                WHEN passenger_count = 2 THEN '2 Passagiere'
+                WHEN passenger_count >= 3 THEN '3+ Passagiere'
+                ELSE 'Unbekannt'
+            END as pax_group,
+            COUNT(*) as trips
+        FROM `{TABLE_FACT}`
+        WHERE {" AND ".join(filters)} 
+          AND passenger_count > 0 
+        GROUP BY 1, 2, 3, 4
+        ORDER BY day_num, hour
+    """
+    try: return bq_client.query(sql).to_dataframe()
+    except Exception: return pd.DataFrame()
+
+def load_hourly_price_curve(taxi_type="ALL", borough=None, mode="flexible", years=None, months=None, sy=None, sm=None, ey=None, em=None):
+    if not bq_client: return pd.DataFrame()
+    
+    filters = ["1=1"]
+    filters.append(_build_sql_condition("source_system", taxi_type, is_string=True))
+    filters.append(_get_time_filter_sql(mode, years, months, sy, sm, ey, em, date_col="pickup_datetime"))
+    
+    # Borough Filter
+    if borough:
+        if not isinstance(borough, list): borough = [borough]
+        if len(borough) > 0:
+            safe_boroughs = "', '".join(borough)
+            filters.append(f"pickup_location_id IN (SELECT location_id FROM `{TABLE_DIM_LOC}` WHERE borough IN ('{safe_boroughs}'))")
+
+    # Wir laden Preis UND Distanz, um ggf. zu sehen, ob es nur an der Länge liegt
+    sql = f"""
+        SELECT 
+            EXTRACT(HOUR FROM pickup_datetime) as hour,
+            AVG(total_amount) as avg_price,
+            AVG(trip_distance) as avg_distance
+        FROM `{TABLE_FACT}`
+        WHERE {" AND ".join(filters)} 
+          AND total_amount BETWEEN 2.5 AND 300 -- Ausreißer raus
+        GROUP BY 1
+        ORDER BY 1
+    """
+    try: return bq_client.query(sql).to_dataframe()
+    except Exception: return pd.DataFrame()
+
+def load_fare_breakdown(taxi_type="ALL", borough=None, mode="flexible", years=None, months=None, sy=None, sm=None, ey=None, em=None):
+    if not bq_client: return pd.DataFrame()
+    
+    filters = ["1=1"]
+    filters.append(_build_sql_condition("source_system", taxi_type, is_string=True))
+    filters.append(_get_time_filter_sql(mode, years, months, sy, sm, ey, em, date_col="pickup_datetime"))
+    
+    # Borough Filter
+    if borough:
+        if not isinstance(borough, list): borough = [borough]
+        if len(borough) > 0:
+            safe_boroughs = "', '".join(borough)
+            filters.append(f"pickup_location_id IN (SELECT location_id FROM `{TABLE_DIM_LOC}` WHERE borough IN ('{safe_boroughs}'))")
+
+    # Berechnet die Anteile: Basispreis vs. Trinkgeld vs. Gebühren (Rest)
+    sql = f"""
+        SELECT 
+            l.borough,
+            AVG(f.fare_amount) as avg_base_fare,
+            AVG(f.tip_amount) as avg_tip,
+            AVG(f.total_amount - f.fare_amount - f.tip_amount) as avg_fees_tolls
+        FROM `{TABLE_FACT}` f
+        JOIN `{TABLE_DIM_LOC}` l ON f.pickup_location_id = l.location_id
+        WHERE {" AND ".join(filters)} 
+          AND f.total_amount > 0
+        GROUP BY 1
+    """
+    try: return bq_client.query(sql).to_dataframe()
+    except Exception: return pd.DataFrame()
+
+def load_hourly_tip_trend(taxi_type="ALL", borough=None, mode="flexible", years=None, months=None, sy=None, sm=None, ey=None, em=None):
+    if not bq_client: return pd.DataFrame()
+    
+    filters = ["1=1"]
+    filters.append(_build_sql_condition("source_system", taxi_type, is_string=True))
+    filters.append(_get_time_filter_sql(mode, years, months, sy, sm, ey, em, date_col="pickup_datetime"))
+    
+    if borough:
+        if not isinstance(borough, list): borough = [borough]
+        if len(borough) > 0:
+            safe_boroughs = "', '".join(borough)
+            filters.append(f"pickup_location_id IN (SELECT location_id FROM `{TABLE_DIM_LOC}` WHERE borough IN ('{safe_boroughs}'))")
+
+    # Wir berechnen Tip % als (Summe Tip / Summe Fare) pro Stunde
+    # Filter: Nur Fahrten mit Fare > 0
+    sql = f"""
+        SELECT 
+            EXTRACT(HOUR FROM pickup_datetime) as hour,
+            SAFE_DIVIDE(SUM(tip_amount), SUM(fare_amount)) * 100 as avg_tip_pct
+        FROM `{TABLE_FACT}`
+        WHERE {" AND ".join(filters)} 
+          AND fare_amount > 0
+          -- Optional: Filter auf Payment Type 'Credit Card' (oft ID 1) wäre hier präziser, 
+          -- aber wir nehmen an, dass Cash-Tips = 0 sind und den Schnitt drücken, was auch eine Aussage ist.
+          -- Oder wir filtern 'tip_amount > 0', um nur "Tipper" zu sehen. 
+          -- Hier nehmen wir den "Realen Schnitt" (inkl. Nullern bei Cash):
+          AND total_amount > 0
+        GROUP BY 1
+        ORDER BY 1
+    """
+    try: return bq_client.query(sql).to_dataframe()
+    except Exception: return pd.DataFrame()
+
+def load_tip_by_distance(taxi_type="ALL", borough=None, mode="flexible", years=None, months=None, sy=None, sm=None, ey=None, em=None):
+    if not bq_client: return pd.DataFrame()
+    
+    filters = ["1=1"]
+    filters.append(_build_sql_condition("source_system", taxi_type, is_string=True))
+    filters.append(_get_time_filter_sql(mode, years, months, sy, sm, ey, em, date_col="pickup_datetime"))
+    
+    if borough:
+        if not isinstance(borough, list): borough = [borough]
+        if len(borough) > 0:
+            safe_boroughs = "', '".join(borough)
+            filters.append(f"pickup_location_id IN (SELECT location_id FROM `{TABLE_DIM_LOC}` WHERE borough IN ('{safe_boroughs}'))")
+
+    # Granulare Buckets (1-Meilen-Schritte bis 20)
+    sql = f"""
+        SELECT 
+            CASE 
+                WHEN trip_distance >= 20 THEN 20
+                ELSE CAST(FLOOR(trip_distance) AS INT64)
+            END as sort_key,
+            CASE 
+                WHEN trip_distance >= 20 THEN '20+ Meilen'
+                ELSE CONCAT(CAST(CAST(FLOOR(trip_distance) AS INT64) AS STRING), '-', CAST(CAST(FLOOR(trip_distance) AS INT64) + 1 AS STRING), ' Meilen')
+            END as dist_bucket,
+            SAFE_DIVIDE(SUM(tip_amount), SUM(fare_amount)) * 100 as avg_tip_pct
+        FROM `{TABLE_FACT}`
+        WHERE {" AND ".join(filters)} 
+          AND fare_amount > 0 AND trip_distance >= 0
+        GROUP BY 1, 2
+        ORDER BY 1 ASC
+    """
+    try: return bq_client.query(sql).to_dataframe()
+    except Exception: return pd.DataFrame()

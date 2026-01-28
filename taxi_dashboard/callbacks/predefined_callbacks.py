@@ -22,7 +22,15 @@ from utils.data_access import (
     load_top_tipping_zones,
     load_seasonality_data,
     load_market_share_trend,
-    load_top_routes
+    load_top_routes,
+    load_revenue_efficiency,
+    load_hourly_distance,
+    load_weekly_passenger_split,
+    load_hourly_price_curve,
+    load_fare_breakdown,
+    load_borough_flows,
+    load_hourly_tip_trend, 
+    load_tip_by_distance
 )
 
 def register_predefined_callbacks(app):
@@ -371,80 +379,185 @@ def register_predefined_callbacks(app):
         return current_style
 
     # ---------------------------------------------------
-    # Inhalt des Deep-Dive Modals 1 (Weekly Plot)
+    # Inhalt des Deep-Dive Modals 1 (Weekly + Heatmap + Distance + Pax Split)
     # ---------------------------------------------------
     @app.callback(
-        Output("fig-peak-hours-deepdive", "figure"),
+        [Output("fig-peak-hours-deepdive", "figure"),
+         Output("fig-peak-hours-heatmap", "figure"),
+         Output("fig-peak-distance", "figure"),
+         Output("fig-peak-passengers", "figure"),      
+         Output("modal-extra-stats", "children")],
         [
             Input("filter-taxi-type", "value"),
-            Input("filter-year", "value"),
-            Input("filter-borough", "value"),
+            Input("filter-year", "value"),      
+            Input("filter-borough", "value"),   
             Input("filter-month", "value"),
-            # NEUE INPUTS
             Input("time-filter-mode", "value"),
             Input("range-start-year", "value"),
             Input("range-start-month", "value"),
             Input("range-end-year", "value"),
             Input("range-end-month", "value"),
-            
             Input("btn-open-modal", "n_clicks")
         ],
         [State("modal-peak-hours", "style")]
     )
-    def update_peak_deepdive(taxi_type, year, borough, month, mode, sy, sm, ey, em, n_clicks, modal_style):
-        # Lazy Loading Check
-        is_open = modal_style and modal_style.get("display") == "flex"
-        if ctx.triggered_id != "btn-open-modal" and not is_open:
-            return no_update
+    def update_peak_deepdive(taxi, year, borough, month, mode, sy, sm, ey, em, n_clicks, modal_style):
+        
+        if not taxi: taxi = "ALL"
 
-        if not taxi_type: taxi_type = "ALL"
-
+        # 1. Daten laden (Patterns für Hauptcharts)
         df = load_weekly_patterns(
-            taxi_type=taxi_type, borough=borough, 
+            taxi_type=taxi, borough=borough, 
             mode=mode, years=year, months=month, 
             sy=sy, sm=sm, ey=ey, em=em
         )
         
         if df.empty:
-            fig = go.Figure()
-            fig.update_layout(title="Keine Daten")
-            apply_exec_style(fig)
-            return fig
+            empty = go.Figure()
+            apply_exec_style(empty, title="Keine Daten")
+            return empty, empty, empty, empty, "Keine Daten."
 
+        # Gemeinsame Sortierung für Wochenverlauf
         week_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        
+        # --- CHART 1: Balken (Volumen) ---
         df["day_name"] = pd.Categorical(df["day_name"], categories=week_order, ordered=True)
         df = df.sort_values(by=["day_name", "hour"])
-        
         df["time_label"] = df["day_name"].astype(str) + " " + df["hour"].astype(str).str.zfill(2) + ":00"
 
-        color_map = {
-            "YELLOW": "#f1c40f", 
-            "GREEN": "#2ecc71",
-            "FHV": "#636e72",                 
-            "FHV - High Volume": "#636e72"    
-        }
+        color_map = {"YELLOW": "#f1c40f", "GREEN": "#2ecc71", "FHV": "#636e72", "FHV - High Volume": "#636e72"}
         taxi_stack_order = ["FHV", "FHV - High Volume", "GREEN", "YELLOW"]
 
-        fig = px.bar(
-            df, 
-            x="time_label", 
-            y="trips", 
-            color="taxi_type", 
-            category_orders={"time_label": df["time_label"].tolist(), "taxi_type": taxi_stack_order},
-            color_discrete_map=color_map
+        fig_bar = px.bar(
+            df, x="time_label", y="trips", color="taxi_type", 
+            category_orders={"taxi_type": taxi_stack_order}, color_discrete_map=color_map
+        )
+        fig_bar.update_layout(
+            xaxis_title=None, yaxis_title="Trips", legend_title=None,
+            xaxis=dict(tickangle=-45, nticks=15), margin=dict(t=40, b=40, l=40, r=20), bargap=0.0
+        )
+        apply_exec_style(fig_bar, title="Wochenverlauf (Detailansicht)")
+
+        # --- CHART 2: Heatmap ---
+        df_grouped = df.groupby(["day_name", "day_of_week", "hour"])['trips'].sum().reset_index()
+        df_grouped = df_grouped.sort_values("day_of_week")
+
+        fig_heat = px.density_heatmap(
+            df_grouped, x="hour", y="day_name", z="trips",
+            nbinsx=24, nbinsy=7, color_continuous_scale="Viridis",
+            category_orders={"day_name": week_order}
+        )
+        fig_heat.update_layout(
+            xaxis_title="Stunde (0-23)", yaxis_title=None, coloraxis_colorbar=dict(title="Trips"),
+            margin=dict(t=40, b=40, l=60, r=20)
+        )
+        apply_exec_style(fig_heat, title="Heatmap: Wann ist am meisten los?")
+
+        # --- CHART 3: DISTANCE (Links unten) ---
+        df_dist = load_hourly_distance(
+            taxi_type=taxi, borough=borough, mode=mode, years=year, months=month, 
+            sy=sy, sm=sm, ey=ey, em=em
+        )
+        if df_dist.empty:
+            fig_dist = go.Figure()
+            apply_exec_style(fig_dist)
+        else:
+            fig_dist = px.line(df_dist, x="hour", y="avg_distance", markers=True, line_shape="spline")
+            fig_dist.update_traces(line_color="#e74c3c", line_width=3)
+            fig_dist.update_layout(
+                xaxis_title="Uhrzeit", yaxis_title="Ø Meilen",
+                margin=dict(t=40, b=40, l=40, r=20), xaxis=dict(tickmode='linear', tick0=0, dtick=4)
+            )
+            apply_exec_style(fig_dist, title="Fahrtdistanz-Profil (Tageszeit)")
+
+        # --- CHART 4: WEEKLY PASSENGER SPLIT (Rechts unten - NEU!) ---
+        df_pax = load_weekly_passenger_split(
+            taxi_type=taxi, borough=borough, mode=mode, years=year, months=month, 
+            sy=sy, sm=sm, ey=ey, em=em
         )
         
-        fig.update_layout(
-            xaxis_title=None,
-            yaxis_title="Anzahl Fahrten",
-            legend_title=None,
-            xaxis=dict(tickangle=-45, nticks=20),
-            margin=dict(t=40, b=80, l=40, r=20),
-            bargap=0.0
-        )
+        if df_pax.empty:
+            fig_pax = go.Figure()
+            apply_exec_style(fig_pax, title="Keine Daten")
+        else:
+            # Sortierung sicherstellen
+            df_pax["day_name"] = pd.Categorical(df_pax["day_name"], categories=week_order, ordered=True)
+            df_pax = df_pax.sort_values(by=["day_name", "hour"])
+            
+            # X-Achse bauen (Gleiches Format wie oben)
+            df_pax["time_label"] = df_pax["day_name"].astype(str) + " " + df_pax["hour"].astype(str).str.zfill(2) + ":00"
+
+            # Farben definieren
+            pax_colors = {
+                "1 Passagier": "#3498db",    # Blau (Standard)
+                "2 Passagiere": "#f1c40f",   # Gelb
+                "3+ Passagiere": "#e74c3c"   # Rot (Gruppe)
+            }
+
+            fig_pax = px.line(
+                df_pax, 
+                x="time_label", 
+                y="trips", 
+                color="pax_group",
+                color_discrete_map=pax_colors,
+                category_orders={"pax_group": ["1 Passagier", "2 Passagiere", "3+ Passagiere"]}
+            )
+            
+            fig_pax.update_layout(
+                xaxis_title=None, 
+                yaxis_title="Trips",
+                margin=dict(t=40, b=40, l=40, r=20), 
+                xaxis=dict(tickangle=-45, nticks=15), # Gleiche Achse wie Chart 1
+                legend=dict(
+                    orientation="h", 
+                    yanchor="bottom", y=1.02, 
+                    xanchor="right", x=1
+                )
+            )
+            apply_exec_style(fig_pax, title="Passagiere im Wochenverlauf")
+
+        # --- STATS (Bleiben gleich) ---
+        df_sorted = df_grouped.sort_values(by="trips", ascending=False)
+        top1 = df_sorted.iloc[0]
+        top2 = df_sorted.iloc[1] if len(df_sorted) > 1 else None
+        top3 = df_sorted.iloc[2] if len(df_sorted) > 2 else None
+
+        weekend_days = ["Saturday", "Sunday"]
+        total_trips = df_grouped['trips'].sum()
+        weekend_trips = df_grouped[df_grouped['day_name'].isin(weekend_days)]['trips'].sum()
+        weekend_share = (weekend_trips / total_trips * 100) if total_trips > 0 else 0
         
-        apply_exec_style(fig, title="Wochenverlauf (Detailansicht)")
-        return fig
+        stats_html = html.Div([
+            html.Div(className="insight-card", children=[
+                html.Span("🏆 Busiest Peak", className="insight-label"),
+                html.H3(f"{top1['day_name']}, {top1['hour']}:00", className="insight-value"),
+                html.P(f"{int(top1['trips']):,} Fahrten (Max)", className="insight-sub")
+            ]),
+            html.Div(className="insight-card", children=[
+                html.Span("Nächste Spitzenzeiten", className="insight-label", style={"marginBottom": "10px"}),
+                html.Div(style={"display": "flex", "justifyContent": "space-between", "marginBottom": "6px", "alignItems": "center"}, children=[
+                    html.Span(f"🥈 {top2['day_name']} {top2['hour']}:00" if top2 is not None else "-", style={"fontWeight": "600", "fontSize": "13px", "color": "#334155"}),
+                    html.Span(f"{int(top2['trips']):,}" if top2 is not None else "-", style={"fontSize": "12px", "color": "#64748b"})
+                ]),
+                html.Div(style={"display": "flex", "justifyContent": "space-between", "alignItems": "center"}, children=[
+                    html.Span(f"🥉 {top3['day_name']} {top3['hour']}:00" if top3 is not None else "-", style={"fontWeight": "600", "fontSize": "13px", "color": "#334155"}),
+                    html.Span(f"{int(top3['trips']):,}" if top3 is not None else "-", style={"fontSize": "12px", "color": "#64748b"})
+                ]),
+                html.P("Alternative Stoßzeiten.", className="insight-sub", style={"marginTop": "8px"})
+            ]),
+            html.Div(className="insight-card", children=[
+                html.Span("Wochenend-Anteil", className="insight-label"),
+                html.H3(f"{weekend_share:.1f}%", className="insight-value"),
+                html.Div([
+                    html.Div(className="progress-container", children=[
+                        html.Div(className="progress-bar-fill", style={"width": f"{weekend_share}%"}) 
+                    ]),
+                    html.P("Anteil am Gesamtvolumen", className="insight-sub", style={"marginTop": "6px"})
+                ])
+            ])
+        ])
+
+        return fig_bar, fig_heat, fig_dist, fig_pax, stats_html
 
     # ---------------------------------------------------
     # Modal Open/Close Logic (Deep Dive 2: Fare Deep Dive)
@@ -468,74 +581,148 @@ def register_predefined_callbacks(app):
         return current_style
 
     @app.callback(
-        [Output("fig-fare-routes", "figure"),
+        [Output("fig-fare-hourly", "figure"),
+         Output("fig-flows", "figure"),            # <--- NEUER OUTPUT 2
+         Output("fig-fare-routes", "figure"),
+         Output("fig-fare-breakdown", "figure"),
+         Output("fig-kpi-rev-eff", "figure"),
          Output("modal-fare-stats", "children")],
         [
             Input("filter-taxi-type", "value"),
             Input("filter-year", "value"),
             Input("filter-borough", "value"),
             Input("filter-month", "value"),
-            # NEUE INPUTS
             Input("time-filter-mode", "value"),
             Input("range-start-year", "value"),
             Input("range-start-month", "value"),
             Input("range-end-year", "value"),
             Input("range-end-month", "value"),
-            
             Input("btn-open-modal-fare", "n_clicks")
         ],
         [State("modal-fare-deepdive", "style")]
     )
     def update_fare_deepdive(taxi_type, year, borough, month, mode, sy, sm, ey, em, n_clicks, modal_style):
+        # Lazy Loading
         is_open = modal_style and modal_style.get("display") == "flex"
         if ctx.triggered_id != "btn-open-modal-fare" and not is_open:
-            return no_update, no_update
+            return no_update, no_update, no_update, no_update, no_update, no_update # 6 Returns!
 
         if not taxi_type: taxi_type = "ALL"
 
-        df = load_top_routes(
-            taxi_type=taxi_type, borough=borough,
-            mode=mode, years=year, months=month, 
-            sy=sy, sm=sm, ey=ey, em=em
-        )
-        
-        if df.empty:
-            fig = go.Figure()
-            apply_exec_style(fig, title="Keine Daten")
-            return fig, html.P("Keine Daten.")
+        # --- 1. HERO: HOURLY PRICE CURVE ---
+        df_hourly = load_hourly_price_curve(taxi_type=taxi_type, borough=borough, mode=mode, years=year, months=month, sy=sy, sm=sm, ey=ey, em=em)
+        if df_hourly.empty:
+            fig_hourly = go.Figure()
+            apply_exec_style(fig_hourly, title="Keine Daten")
+            hourly_stats = None
+        else:
+            fig_hourly = px.line(df_hourly, x="hour", y="avg_price", markers=True, line_shape="spline")
+            fig_hourly.update_traces(line_color="#e74c3c", line_width=3, fill='tozeroy', fillcolor="rgba(231, 76, 60, 0.1)")
+            fig_hourly.update_layout(
+                xaxis_title="Uhrzeit", yaxis_title="Ø Gesamtpreis ($)",
+                margin=dict(t=40, b=40, l=60, r=20), xaxis=dict(tickmode='linear', tick0=0, dtick=2)
+            )
+            apply_exec_style(fig_hourly, title="Preisentwicklung im Tagesverlauf ($)")
+            max_price_row = df_hourly.loc[df_hourly["avg_price"].idxmax()]
+            min_price_row = df_hourly.loc[df_hourly["avg_price"].idxmin()]
+            hourly_stats = (max_price_row, min_price_row)
 
-        df["route_label"] = df["pickup_borough"] + " → " + df["dropoff_borough"]
-        
-        fig = px.bar(
-            df,
-            x="revenue",
-            y="route_label",
-            orientation='h',
-            text="avg_fare",
-            color="revenue",
-            color_continuous_scale="Blues"
-        )
-        
-        fig.update_traces(texttemplate='$%{text:.2f}', textposition='inside')
-        fig.update_layout(yaxis={'categoryorder':'total ascending'})
-        apply_exec_style(fig, title="Top 10 Routen nach Umsatz")
+        # --- 2. FLOWS (Pickup -> Dropoff) ---
+        df_flows = load_borough_flows(taxi_type=taxi_type, borough=borough, mode=mode, years=year, months=month, sy=sy, sm=sm, ey=ey, em=em)
+        if df_flows.empty:
+            fig_flows = go.Figure()
+            apply_exec_style(fig_flows, title="Keine Flow-Daten")
+        else:
+            fig_flows = px.bar(
+                df_flows,
+                x="pickup_borough",
+                y="trips",
+                color="dropoff_borough",
+                # Schöne qualitative Farben für Unterscheidung
+                color_discrete_sequence=px.colors.qualitative.Prism 
+            )
+            fig_flows.update_layout(
+                xaxis_title=None, yaxis_title="Anzahl Fahrten", legend_title="Ziel",
+                barmode="stack", margin=dict(l=40, r=40, t=40, b=40)
+            )
+            apply_exec_style(fig_flows, title="Verkehrsströme (Pickup → Dropoff)")
 
-        top_route = df.iloc[0]
-        stats_html = html.Div([
-            html.Div(className="kpi", style={"marginBottom": "10px"}, children=[
-                html.P("Top Route (Umsatz)", className="kpi-title"),
-                html.H3(f"{top_route['route_label']}", style={"fontSize": "16px", "margin": "5px 0"}),
-                html.P(f"${top_route['revenue']:,.0f}", className="kpi-value", style={"color": "var(--primary)"})
-            ]),
-             html.Div(className="kpi", children=[
-                html.P("Durchschnittspreis Top Route", className="kpi-title"),
-                html.H3(f"${top_route['avg_fare']:.2f}", className="kpi-value")
-            ]),
-            html.P("Der Chart zeigt, welche Borough-Verbindungen das meiste Geld einbringen.", 
-                   style={"fontSize": "12px", "color": "var(--muted)", "marginTop": "20px"})
-        ])
+        # --- 3. TOP ROUTES ---
+        df_routes = load_top_routes(taxi_type=taxi_type, borough=borough, mode=mode, years=year, months=month, sy=sy, sm=sm, ey=ey, em=em)
+        if df_routes.empty:
+            fig_routes = go.Figure()
+            apply_exec_style(fig_routes)
+            top_route_stats = None
+        else:
+            df_routes["route_label"] = df_routes["pickup_borough"] + " → " + df_routes["dropoff_borough"]
+            fig_routes = px.bar(df_routes, x="revenue", y="route_label", orientation='h', text="avg_fare", color="revenue", color_continuous_scale="Blues")
+            fig_routes.update_traces(texttemplate='$%{text:.2f}', textposition='inside')
+            fig_routes.update_layout(yaxis={'categoryorder':'total ascending'})
+            apply_exec_style(fig_routes, title="Top 10 Routen (Revenue)")
+            top_route_stats = df_routes.iloc[0]
 
-        return fig, stats_html
+        # --- 4. BREAKDOWN ---
+        df_break = load_fare_breakdown(taxi_type=taxi_type, borough=borough, mode=mode, years=year, months=month, sy=sy, sm=sm, ey=ey, em=em)
+        if df_break.empty:
+            fig_break = go.Figure()
+            apply_exec_style(fig_break)
+        else:
+            fig_break = px.bar(
+                df_break, x="borough", y=["avg_base_fare", "avg_fees_tolls", "avg_tip"],
+                color_discrete_map={"avg_base_fare": "#3498db", "avg_fees_tolls": "#95a5a6", "avg_tip": "#f1c40f"}
+            )
+            fig_break.update_layout(barmode="stack", xaxis_title=None, yaxis_title="Ø Kosten ($)", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+            new_names = {"avg_base_fare": "Fahrpreis", "avg_fees_tolls": "Gebühren/Maut", "avg_tip": "Trinkgeld"}
+            fig_break.for_each_trace(lambda t: t.update(name = new_names.get(t.name, t.name)))
+            apply_exec_style(fig_break, title="Preiszusammensetzung")
+
+        # --- 5. EFFICIENCY ---
+        df_eff = load_revenue_efficiency(taxi_type=taxi_type, borough=borough, mode=mode, years=year, months=month, sy=sy, sm=sm, ey=ey, em=em)
+        if df_eff.empty:
+            fig_eff = go.Figure()
+            apply_exec_style(fig_eff)
+        else:
+            fig_eff = go.Figure()
+            categories = sorted(df_eff["trip_category"].unique())
+            for cat in categories:
+                cat_data = df_eff[df_eff["trip_category"] == cat]
+                fig_eff.add_trace(go.Box(
+                    name=cat, x=[cat], 
+                    q1=[cat_data["q1_val"].mean()], median=[cat_data["median_val"].mean()], q3=[cat_data["q3_val"].mean()],
+                    lowerfence=[cat_data["min_val"].mean()], upperfence=[cat_data["max_val"].mean()],
+                    marker_color="#3498db", showlegend=False
+                ))
+            fig_eff.update_layout(yaxis_title="$/min (Log)", yaxis=dict(type="log", autorange=True))
+            apply_exec_style(fig_eff, title="Umsatz-Effizienz")
+
+        # --- STATS SIDEBAR ---
+        stats_content = []
+        if hourly_stats:
+            max_r, min_r = hourly_stats
+            price_diff = max_r['avg_price'] - min_r['avg_price']
+            stats_content.append(html.Div(className="insight-card", children=[
+                html.Span("Teuerste Uhrzeit 📈", className="insight-label"),
+                html.H3(f"{int(max_r['hour'])}:00 Uhr", className="insight-value"),
+                html.P(f"${max_r['avg_price']:.2f} (vs. ${min_r['avg_price']:.2f} Minimum)", className="insight-sub"),
+                html.Div(className="progress-container", style={"marginTop":"8px"}, children=[
+                    html.Div(className="progress-bar-fill", style={"width": "80%", "background": "#e74c3c"}) 
+                ]),
+                html.P(f"Preisspanne: +${price_diff:.2f}", className="insight-sub", style={"fontSize": "11px"})
+            ]))
+
+        if top_route_stats is not None:
+            stats_content.append(html.Div(className="insight-card", children=[
+                html.Span("Top Route (Revenue)", className="insight-label"),
+                html.H3(f"{top_route_stats['route_label']}", className="insight-value", style={"fontSize": "14px"}),
+                html.P(f"${top_route_stats['revenue']:,.0f} Umsatz", className="insight-sub")
+            ]))
+
+        if not stats_content:
+            stats_content = html.P("Keine Daten verfügbar.")
+        else:
+            stats_content = html.Div(stats_content)
+
+        return fig_hourly, fig_flows, fig_routes, fig_break, fig_eff, stats_content
 
     # ---------------------------------------------------
     # Modal Open/Close Logic (Deep Dive 3: Tip Behavior)
@@ -561,20 +748,20 @@ def register_predefined_callbacks(app):
     # Inhalt des Deep-Dive Modals 3 (Tip Behavior)
     # ---------------------------------------------------
     @app.callback(
-        [Output("fig-tip-distribution", "figure"),
+        [Output("fig-tip-hourly", "figure"),
+         Output("fig-tip-distribution", "figure"),
+         Output("fig-tip-distance", "figure"),
          Output("modal-tip-zones-list", "children")],
         [
             Input("filter-taxi-type", "value"),
             Input("filter-year", "value"),
             Input("filter-borough", "value"),
             Input("filter-month", "value"),
-            # NEUE INPUTS
             Input("time-filter-mode", "value"),
             Input("range-start-year", "value"),
             Input("range-start-month", "value"),
             Input("range-end-year", "value"),
             Input("range-end-month", "value"),
-            
             Input("btn-open-modal-tip", "n_clicks")
         ],
         [State("modal-tip-deepdive", "style")]
@@ -582,48 +769,59 @@ def register_predefined_callbacks(app):
     def update_tip_deepdive(taxi_type, year, borough, month, mode, sy, sm, ey, em, n_clicks, modal_style):
         is_open = modal_style and modal_style.get("display") == "flex"
         if ctx.triggered_id != "btn-open-modal-tip" and not is_open:
-            return no_update, no_update
+            return no_update, no_update, no_update, no_update
 
         if not taxi_type: taxi_type = "ALL"
 
-        df_dist = load_tip_distribution(
-            taxi_type=taxi_type, borough=borough,
-            mode=mode, years=year, months=month, 
-            sy=sy, sm=sm, ey=ey, em=em
-        )
-        
-        if df_dist.empty:
-            fig = go.Figure()
-            fig.update_layout(title="Keine Daten")
-            apply_exec_style(fig)
+        # --- 1. HOURLY TREND ---
+        df_trend = load_hourly_tip_trend(taxi_type=taxi_type, borough=borough, mode=mode, years=year, months=month, sy=sy, sm=sm, ey=ey, em=em)
+        if df_trend.empty:
+            fig_trend = go.Figure()
+            apply_exec_style(fig_trend, title="Keine Daten")
         else:
-            fig = px.bar(
-                df_dist, 
-                x="tip_bin", 
-                y="trips",
-                title="Verteilung der Trinkgelder (Passenger Psychology)",
-                text_auto='.2s'
+            fig_trend = px.line(df_trend, x="hour", y="avg_tip_pct", markers=True, line_shape="spline")
+            fig_trend.update_traces(line_color="#16a34a", line_width=3, fill='tozeroy', fillcolor="rgba(22, 163, 74, 0.1)")
+            fig_trend.update_layout(
+                xaxis_title="Uhrzeit", yaxis_title="Ø Trinkgeld (%)",
+                margin=dict(t=40, b=40, l=40, r=20), xaxis=dict(tickmode='linear', tick0=0, dtick=2)
             )
-            fig.update_layout(
-                xaxis_title="Trinkgeld Anteil (%)",
-                yaxis_title="Anzahl Fahrten",
-                bargap=0.1
-            )
-            apply_exec_style(fig)
+            apply_exec_style(fig_trend, title="Tageszeit-Trend")
 
-        top_zones = load_top_tipping_zones(
-            taxi_type=taxi_type, borough=borough,
-            mode=mode, years=year, months=month, 
-            sy=sy, sm=sm, ey=ey, em=em
-        )
-        
+        # --- 2. DISTRIBUTION ---
+        df_dist = load_tip_distribution(taxi_type=taxi_type, borough=borough, mode=mode, years=year, months=month, sy=sy, sm=sm, ey=ey, em=em)
+        if df_dist.empty:
+            fig_dist = go.Figure()
+            apply_exec_style(fig_dist)
+        else:
+            fig_dist = px.bar(df_dist, x="tip_bin", y="trips", text_auto='.2s')
+            fig_dist.update_traces(marker_color="#16a34a")
+            fig_dist.update_layout(xaxis_title="Tip Bucket", yaxis_title="Anzahl Fahrten", bargap=0.1)
+            apply_exec_style(fig_dist, title="Verteilung der Trinkgelder")
+
+        # --- 3. DISTANCE (UPDATE: Granulare Meilen) ---
+        df_distance = load_tip_by_distance(taxi_type=taxi_type, borough=borough, mode=mode, years=year, months=month, sy=sy, sm=sm, ey=ey, em=em)
+        if df_distance.empty:
+            fig_dist_plot = go.Figure()
+            apply_exec_style(fig_dist_plot)
+        else:
+            # Wir verlassen uns auf die SQL-Sortierung (sort_key), daher kein category_orders nötig
+            fig_dist_plot = px.bar(df_distance, x="dist_bucket", y="avg_tip_pct")
+            fig_dist_plot.update_traces(marker_color="#86efac")
+            fig_dist_plot.update_layout(
+                xaxis_title="Distanz (Meilen)", 
+                yaxis_title="Ø Trinkgeld (%)",
+                xaxis=dict(tickangle=-45) # Labels schräg stellen, damit sie hinpassen
+            )
+            apply_exec_style(fig_dist_plot, title="Tip nach Distanz (Detail)")
+
+        # --- 4. TOP ZONES LIST ---
+        top_zones = load_top_tipping_zones(taxi_type=taxi_type, borough=borough, mode=mode, years=year, months=month, sy=sy, sm=sm, ey=ey, em=em)
         if not top_zones:
             list_html = html.P("Keine Daten verfügbar.")
         else:
             rows = []
             for i, zone in enumerate(top_zones):
                 medal = "🥇 " if i==0 else ("🥈 " if i==1 else ("🥉 " if i==2 else f"{i+1}. "))
-                
                 rows.append(html.Div(
                     className="kpi", 
                     style={"padding": "10px", "marginBottom": "8px", "boxShadow": "none", "border": "1px solid #eee"},
@@ -640,7 +838,7 @@ def register_predefined_callbacks(app):
                 ))
             list_html = html.Div(rows)
 
-        return fig, list_html
+        return fig_trend, fig_dist, fig_dist_plot, list_html
 
     # ---------------------------------------------------
     # Modal Open/Close Logic (Deep Dive 4: Demand)
@@ -669,100 +867,153 @@ def register_predefined_callbacks(app):
     # Inhalt des Deep-Dive Modals 4 (Seasonality & Taxi War)
     # ---------------------------------------------------
     @app.callback(
-        [Output("fig-monthly-seasonality", "figure"),
-         Output("fig-taxi-war", "figure"),
+        [Output("fig-taxi-war", "figure"),
+         Output("fig-yoy-growth", "figure"),
+         Output("fig-monthly-seasonality", "figure"),
          Output("modal-demand-stats", "children")],
         [
             Input("filter-taxi-type", "value"),
             Input("filter-borough", "value"),
+            # Wir nehmen die Zeit-Filter als Input, nutzen sie aber selektiv
             Input("filter-year", "value"), 
             Input("filter-month", "value"),
-            # NEUE INPUTS
             Input("time-filter-mode", "value"),
             Input("range-start-year", "value"),
             Input("range-start-month", "value"),
             Input("range-end-year", "value"),
             Input("range-end-month", "value"),
-            
             Input("btn-open-modal-demand", "n_clicks")
         ],
         [State("modal-demand-deepdive", "style")]
     )
     def update_demand_deepdive(taxi, borough, year, month, mode, sy, sm, ey, em, n_clicks, modal_style):
-        
-        # 1. Performance-Check: Nur laden, wenn Modal sichtbar ist
         is_open = modal_style and modal_style.get("display") == "flex"
         if ctx.triggered_id != "btn-open-modal-demand" and not is_open:
-            return no_update, no_update, no_update
+            return no_update, no_update, no_update, no_update
 
         if not taxi: taxi = "ALL"
 
-        # --- A) Seasonality Plot ---
-        df_seas = load_seasonality_data(
-            taxi_type=taxi, borough=borough,
-            mode=mode, years=year, months=month, 
-            sy=sy, sm=sm, ey=ey, em=em
-        )
-        
-        if df_seas.empty:
-            fig_seas = go.Figure()
-            apply_exec_style(fig_seas, title="Keine Daten")
-        else:
-            fig_seas = px.line(
-                df_seas, 
-                x="month_name", 
-                y="trips", 
-                color="year", 
-                markers=True,
-                category_orders={"month_name": list(calendar.month_name)[1:]}
-            )
-            fig_seas.update_layout(xaxis_title="Monat", yaxis_title="Anzahl Fahrten")
-            apply_exec_style(fig_seas, title="Saisonalität (Jahresvergleich)")
+        # -----------------------------------------------------------
+        # WICHTIG: Für Trend-Analysen ignorieren wir den spezifischen Zeit-Filter
+        # (years=None), damit wir immer die volle Entwicklung sehen.
+        # Borough & Taxi Type werden aber strikt beachtet!
+        # -----------------------------------------------------------
 
-        # --- B) Taxi War Plot (Marktanteile) ---
+        # --- 1. TAXI WAR (Marktanteile) ---
         df_war = load_market_share_trend(
-            taxi_type=taxi, borough=borough,
-            mode=mode, years=year, months=month, 
-            sy=sy, sm=sm, ey=ey, em=em
+            taxi_type=taxi, borough=borough, 
+            mode="flexible", years=None, months=None # Volle Historie erzwingen
         )
         
         if df_war.empty:
             fig_war = go.Figure()
             apply_exec_style(fig_war, title="Keine Daten")
         else:
-            # Datum für Zeitachse bauen
-            df_war["date_col"] = pd.to_datetime(
-                df_war["year"].astype(str) + "-" + df_war["month"].astype(str) + "-01"
-            )
-            
-            # --- FARBANPASSUNG HIER ---
-            color_map = {
-                "YELLOW": "#f1c40f",             
-                "GREEN": "#2ecc71",              
-                "FHV": "#636e72",                
-                "FHV - High Volume": "#636e72"
-            }
-
-            # Area Chart (Gestapelte Fläche)
-            fig_war = px.area(
-                df_war, 
-                x="date_col", 
-                y="trips", 
-                color="taxi_type",
-                color_discrete_map=color_map, 
-                groupnorm='percent' 
-            )
-            
+            df_war["date_col"] = pd.to_datetime(df_war["year"].astype(str) + "-" + df_war["month"].astype(str) + "-01")
+            color_map = {"YELLOW": "#f1c40f", "GREEN": "#2ecc71", "FHV": "#636e72", "FHV - High Volume": "#636e72"}
+            fig_war = px.area(df_war, x="date_col", y="trips", color="taxi_type", color_discrete_map=color_map, groupnorm='percent')
             fig_war.update_layout(xaxis_title="Zeitraum", yaxis_title="Marktanteil (%)")
-            apply_exec_style(fig_war, title="Marktanteile (Taxi War)")
+            apply_exec_style(fig_war, title="Der Taxi War (Marktanteile)")
 
-        # --- C) Stats Text ---
-        stats_html = html.Div([
-            html.P("Analyse:", style={"fontWeight": "bold", "marginBottom": "5px"}),
-            html.Ul([
-                html.Li("Oben: Saisonale Muster im Jahresvergleich."),
-                html.Li("Unten: Kampf um Marktanteile (Yellow vs. FHV)."),
-            ], style={"fontSize": "12px", "paddingLeft": "15px", "color": "var(--text)"})
-        ])
+        # --- 2. YOY GROWTH (Wachstumsraten) ---
+        # Auch hier: Volle Historie laden, damit wir YoY berechnen können
+        df_growth = load_demand_over_years(
+            taxi_type=taxi, borough=borough, 
+            mode="flexible", years=None, months=None 
+        )
 
-        return fig_seas, fig_war, stats_html
+        if df_growth.empty:
+            fig_growth = go.Figure()
+            apply_exec_style(fig_growth)
+        else:
+            df_growth = df_growth.sort_values("year")
+            # Prozentuale Änderung berechnen
+            df_growth["pct_change"] = df_growth["trips"].pct_change() * 100
+            
+            # Farbe: Grün (>0) vs Rot (<0)
+            df_growth["color"] = df_growth["pct_change"].apply(lambda x: "#2ecc71" if x >= 0 else "#e74c3c")
+            
+            fig_growth = go.Figure(go.Bar(
+                x=df_growth["year"], 
+                y=df_growth["pct_change"],
+                marker_color=df_growth["color"],
+                text=df_growth["pct_change"].apply(lambda x: f"{x:+.1f}%" if pd.notnull(x) else ""),
+                textposition="outside"
+            ))
+            # Y-Achse formatieren
+            fig_growth.update_layout(xaxis_title="Jahr", yaxis_title="Wachstum (%)")
+            apply_exec_style(fig_growth, title="Jährliches Wachstum (YoY)")
+
+        # --- 3. SEASONALITY ---
+        # Hier ist es okay, auf Jahre zu filtern, wenn man will. 
+        # Aber für den Vergleich ist "Alle Jahre" meist besser. Wir lassen es auf "Alle".
+        df_seas = load_seasonality_data(
+            taxi_type=taxi, borough=borough,
+            mode="flexible", years=None, months=None
+        )
+        
+        if df_seas.empty:
+            fig_seas = go.Figure()
+            apply_exec_style(fig_seas)
+        else:
+            fig_seas = px.line(
+                df_seas, x="month_name", y="trips", color="year", markers=True,
+                category_orders={"month_name": list(calendar.month_name)[1:]}
+            )
+            fig_seas.update_layout(xaxis_title="Monat", yaxis_title="Trips")
+            apply_exec_style(fig_seas, title="Saisonale Muster")
+
+        # --- STATS SIDEBAR (INSIGHTS) ---
+        stats_content = []
+        
+        if not df_growth.empty:
+            # A) Recovery Rate (Vergleich letztes verfügbares Jahr vs. 2019)
+            # Wir suchen das Jahr 2019 und das letzte Jahr im Datensatz
+            row_2019 = df_growth[df_growth['year'] == 2019]
+            last_year = df_growth['year'].max()
+            row_last = df_growth[df_growth['year'] == last_year]
+
+            if not row_2019.empty and not row_last.empty:
+                val_2019 = row_2019.iloc[0]['trips']
+                val_last = row_last.iloc[0]['trips']
+                
+                if val_2019 > 0:
+                    recovery_rate = (val_last / val_2019) * 100
+                    
+                    # Farbe Logik
+                    rec_color = "#e74c3c" # Rot
+                    if recovery_rate >= 90: rec_color = "#2ecc71" # Grün
+                    elif recovery_rate >= 70: rec_color = "#f1c40f" # Gelb
+
+                    stats_content.append(html.Div(className="insight-card", children=[
+                        html.Span(f"Recovery Rate ({last_year} vs '19)", className="insight-label"),
+                        html.H3(f"{recovery_rate:.1f}%", className="insight-value", style={"color": rec_color}),
+                        html.Div(className="progress-container", style={"marginTop":"8px"}, children=[
+                            html.Div(className="progress-bar-fill", style={"width": f"{min(recovery_rate, 100)}%", "backgroundColor": rec_color}) 
+                        ]),
+                        html.P(f"Erholung gegenüber dem Vor-Corona Niveau.", className="insight-sub", style={"marginTop": "6px"})
+                    ]))
+
+            # B) Peak Year (Wann war am meisten los?)
+            # Wir suchen das Jahr mit dem Maximum an Trips
+            peak_row = df_growth.loc[df_growth['trips'].idxmax()]
+            
+            stats_content.append(html.Div(className="insight-card", children=[
+                html.Span("Peak Year (Rekordjahr)", className="insight-label"),
+                html.H3(f"{int(peak_row['year'])}", className="insight-value"),
+                html.P(f"Höchste Nachfrage im betrachteten Zeitraum: {int(peak_row['trips']):,} Fahrten.", className="insight-sub")
+            ]))
+            
+            # C) Kleiner Text-Hinweis zum Taxi War (nur wenn Daten da sind)
+            if not df_war.empty:
+                 stats_content.append(html.Div(className="insight-card", style={"border": "none", "boxShadow": "none", "background": "transparent", "padding": "0"}, children=[
+                    html.P("Der Chart oben links zeigt deutlich die Verschiebung der Marktanteile von Yellow Cabs hin zu High-Volume FHVs (Uber/Lyft).", 
+                           style={"fontSize": "12px", "color": "#64748b", "fontStyle": "italic"})
+                ]))
+
+        if not stats_content:
+            stats_content = html.P("Keine Daten verfügbar.")
+        else:
+            stats_content = html.Div(stats_content)
+
+        return fig_war, fig_growth, fig_seas, stats_content

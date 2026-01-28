@@ -10,7 +10,7 @@ from utils.plot_style import apply_exec_style
 # Datenzugriff
 from utils.data_access import (
     load_weekly_patterns, load_agg_fare_dist,
-    load_borough_flows, load_revenue_efficiency,
+    load_borough_flows,
     load_quality_audit, load_airport_sunburst_data
 )
 
@@ -125,89 +125,6 @@ def register_creative_callbacks(app):
         apply_exec_style(fig, title=f"Preisstruktur (Datenbasis: {len(df)} Cluster)")
         return fig
     
-    # ---------------------------------------------------
-    # 3) Flows: Pickup -> Dropoff (Stacked Bar)
-    # ---------------------------------------------------
-    @app.callback(Output("fig-flows", "figure"), COMMON_INPUTS)
-    def fig_flows(taxi_type, year, borough, month, mode, sy, sm, ey, em):
-        if not taxi_type: taxi_type = "ALL"
-        
-        df = load_borough_flows(
-            taxi_type=taxi_type, borough=borough, 
-            mode=mode, years=year, months=month, 
-            sy=sy, sm=sm, ey=ey, em=em
-        )
-        
-        if df.empty:
-            fig = go.Figure()
-            fig.update_layout(title="Keine Daten")
-            apply_exec_style(fig)
-            return fig
-
-        fig = px.bar(
-            df,
-            x="pickup_borough",
-            y="trips",
-            color="dropoff_borough",
-            color_discrete_sequence=px.colors.qualitative.Prism 
-        )
-        
-        fig.update_layout(
-            xaxis_title="Start-Bezirk (Pickup)",
-            yaxis_title="Anzahl Fahrten",
-            legend_title="Ziel-Bezirk (Dropoff)",
-            barmode="stack",
-            margin=dict(l=40, r=40, t=40, b=40)
-        )
-        
-        apply_exec_style(fig, title="Verkehrsströme (Pickup → Dropoff)")
-        return fig
-
-    # ---------------------------------------------------
-    # 4) Revenue Efficiency (Boxplot)
-    # ---------------------------------------------------
-    @app.callback(Output("fig-kpi-rev-eff", "figure"), COMMON_INPUTS)
-    def fig_efficiency(taxi_type, year, borough, month, mode, sy, sm, ey, em):
-        if not taxi_type: taxi_type = "ALL"
-        
-        df = load_revenue_efficiency(
-            taxi_type=taxi_type, borough=borough, 
-            mode=mode, years=year, months=month, 
-            sy=sy, sm=sm, ey=ey, em=em
-        )
-        
-        if df.empty:
-            fig = go.Figure()
-            fig.update_layout(title="Keine Daten")
-            apply_exec_style(fig)
-            return fig
-        
-        fig = go.Figure()
-        categories = sorted(df["trip_category"].unique())
-        
-        for cat in categories:
-            cat_data = df[df["trip_category"] == cat]
-            
-            fig.add_trace(go.Box(
-                name=cat,
-                x=[cat], 
-                q1=[cat_data["q1_val"].mean()],
-                median=[cat_data["median_val"].mean()],
-                q3=[cat_data["q3_val"].mean()],
-                lowerfence=[cat_data["min_val"].mean()],
-                upperfence=[cat_data["max_val"].mean()],
-                marker_color="#3498db",
-                showlegend=False
-            ))
-
-        fig.update_layout(
-            yaxis_title="Umsatz pro Minute ($) [Log-Skala]",
-            yaxis=dict(type="log", autorange=True),
-            margin=dict(l=50, r=20, t=50, b=40)
-        )
-        
-        apply_exec_style(fig, title="Effizienz: Kurzstrecke vs. Langstrecke")
-        return fig
     
     # ---------------------------------------------------
     # 6) IT & Data Quality Audit (Stacked Area)
