@@ -37,51 +37,6 @@ def register_creative_callbacks(app):
     ]
 
     # ---------------------------------------------------
-    # 1) Demand Heatmap: Trips nach Stunde × Wochentag
-    # ---------------------------------------------------
-    @app.callback(Output("fig-heatmap", "figure"), COMMON_INPUTS)
-    def fig_heatmap(taxi_type, year, borough, month, mode, sy, sm, ey, em):
-        if not taxi_type: taxi_type = "ALL"
-
-        # Daten laden mit allen Zeit-Parametern
-        df = load_weekly_patterns(
-            taxi_type=taxi_type, borough=borough, 
-            mode=mode, years=year, months=month, 
-            sy=sy, sm=sm, ey=ey, em=em
-        )
-
-        if df.empty:
-            fig = go.Figure()
-            fig.update_layout(title="Keine Daten")
-            apply_exec_style(fig)
-            return fig
-
-        df_grouped = df.groupby(["day_name", "day_of_week", "hour"])['trips'].sum().reset_index()
-        df_grouped = df_grouped.sort_values("day_of_week")
-
-        fig = px.density_heatmap(
-            df_grouped, 
-            x="hour", 
-            y="day_name", 
-            z="trips",
-            nbinsx=24,
-            nbinsy=7,
-            color_continuous_scale="Viridis",
-            category_orders={
-                "day_name": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-            }
-        )
-        
-        fig.update_layout(
-            xaxis_title="Stunde (0-23)", 
-            yaxis_title="Wochentag",
-            coloraxis_colorbar=dict(title="Trips")
-        )
-
-        apply_exec_style(fig, title="Demand Heatmap (Hour × Weekday)")
-        return fig
-
-    # ---------------------------------------------------
     # 2) Scatter: Fare vs Distance (Clean Bubble)
     # ---------------------------------------------------
     @app.callback(Output("fig-scatter-fare-distance", "figure"), COMMON_INPUTS)

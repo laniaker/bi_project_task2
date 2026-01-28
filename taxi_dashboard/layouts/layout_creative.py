@@ -32,27 +32,6 @@ def layout_creative():
             ),
 
             # ---------------------------------------------------
-            # 1) Demand Heatmap: Stunde × Wochentag
-            # ---------------------------------------------------
-            html.Div(
-                className="card",
-                children=[
-                    html.Div(
-                        className="card-head",
-                        children=[
-                            html.H3("Demand Heatmap"),
-                            html.P("Nachfrage nach Zeit & Wochentag."),
-                        ],
-                    ),
-                    dcc.Graph(
-                        id="fig-heatmap",
-                        style={"height": "340px"}, # Explizit setzen für Einheitlichkeit
-                        config={"displayModeBar": False},
-                    ),
-                ],
-            ),
-
-            # ---------------------------------------------------
             # 2) Scatter: Fare vs Distance
             # ---------------------------------------------------
             html.Div(
@@ -67,48 +46,6 @@ def layout_creative():
                     ),
                     dcc.Graph(
                         id="fig-scatter-fare-distance",
-                        style={"height": "340px"},
-                        config={"displayModeBar": False},
-                    ),
-                ],
-            ),
-
-            # ---------------------------------------------------
-            # 3) Borough Flows: Pickup → Dropoff
-            # ---------------------------------------------------
-            html.Div(
-                className="card",
-                children=[
-                    html.Div(
-                        className="card-head",
-                        children=[
-                            html.H3("Pickup → Dropoff Flows"),
-                            html.P("Dominante Verkehrsströme."),
-                        ],
-                    ),
-                    dcc.Graph(
-                        id="fig-flows",
-                        style={"height": "340px"},
-                        config={"displayModeBar": False},
-                    ),
-                ],
-            ),
-
-            # ---------------------------------------------------
-            # 4) KPI: Revenue Efficiency
-            # ---------------------------------------------------
-            html.Div(
-                className="card",
-                children=[
-                    html.Div(
-                        className="card-head",
-                        children=[
-                            html.H3("Revenue Efficiency"),
-                            html.P("Umsatz pro Minute (Boxplot)."),
-                        ],
-                    ),
-                    dcc.Graph(
-                        id="fig-kpi-rev-eff",
                         style={"height": "340px"},
                         config={"displayModeBar": False},
                     ),
