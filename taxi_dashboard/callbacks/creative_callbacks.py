@@ -11,7 +11,8 @@ from utils.plot_style import apply_exec_style
 from utils.data_access import (
     load_weekly_patterns, load_agg_fare_dist,
     load_borough_flows, load_revenue_efficiency,
-    load_quality_audit, load_airport_sunburst_data
+    load_quality_audit, load_airport_sunburst_data,
+    load_efficiency_map_speed, load_tip_sensitivity_by_duration
 )
 
 def register_creative_callbacks(app):
@@ -255,7 +256,126 @@ def register_creative_callbacks(app):
         return fig
     
     # ---------------------------------------------------
-    # 7) Airport Sunburst
+    # 6) Efficiency Map: Avg Speed per Taxi Zone
+    # ---------------------------------------------------
+    @app.callback(Output("fig-efficiency-map", "figure"), COMMON_INPUTS)
+    def fig_efficiency_map(taxi_type, year, borough, month, mode, sy, sm, ey, em):
+        if not taxi_type:
+            taxi_type = "ALL"
+
+        df, geo = load_efficiency_map_speed(
+            taxi_type=taxi_type,
+            borough=borough,
+            mode=mode,
+            years=year,
+            months=month,
+            sy=sy, sm=sm, ey=ey, em=em
+        )
+
+        if df.empty or not geo:
+            fig = go.Figure()
+            fig.update_layout(title="Keine Daten")
+            apply_exec_style(fig)
+            return fig
+
+        # plotly choropleth: locations müssen zu FeatureCollection-IDs passen (Strings)
+        df = df.copy()
+        df["location_id_str"] = df["location_id"].astype(int).astype(str)
+
+        fig = px.choropleth_mapbox(
+            df,
+            geojson=geo,
+            locations="location_id_str",
+            featureidkey="id",
+            color="avg_speed_mph",
+            hover_name="zone",
+            hover_data={
+                "borough": True,
+                "trips": True,
+                "avg_speed_mph": ":.2f",
+                "avg_duration_min": ":.1f",
+                "avg_distance_mi": ":.2f",
+                "location_id_str": False,
+            },
+            mapbox_style="carto-positron",
+            zoom=9,
+            center={"lat": 40.7128, "lon": -74.0060},
+            opacity=0.75,
+        )
+
+        fig.update_layout(
+            margin=dict(l=0, r=0, t=40, b=0),
+            coloraxis_colorbar=dict(title="Avg Speed (mph)")
+        )
+
+        apply_exec_style(fig, title="Efficiency Map (Avg Speed per Pickup Zone)")
+        return fig
+
+
+    # ---------------------------------------------------
+    # 7) Tip Sensitivity Curve: Tip% vs Duration
+    # ---------------------------------------------------
+    @app.callback(Output("fig-tip-sensitivity", "figure"), COMMON_INPUTS)
+    def fig_tip_sensitivity(taxi_type, year, borough, month, mode, sy, sm, ey, em):
+        if not taxi_type:
+            taxi_type = "ALL"
+
+        df = load_tip_sensitivity_by_duration(
+            taxi_type=taxi_type,
+            borough=borough,
+            mode=mode,
+            years=year,
+            months=month,
+            sy=sy, sm=sm, ey=ey, em=em,
+            bin_minutes=2,
+            max_minutes=120
+        )
+
+        if df.empty:
+            fig = go.Figure()
+            fig.update_layout(title="Keine Daten")
+            apply_exec_style(fig)
+            return fig
+
+        df = df.sort_values("duration_bin").copy()
+
+        # Smooth line (rolling mean)
+        df["smoothed_tip_pct"] = df["avg_tip_pct"].rolling(window=5, min_periods=1, center=True).mean()
+
+        fig = go.Figure()
+
+        fig.add_trace(
+            go.Scatter(
+                x=df["duration_bin"],
+                y=df["avg_tip_pct"],
+                mode="markers",
+                name="Binned Tip%",
+                hovertemplate="Duration bin: %{x} min<br>Tip%: %{y:.2f}%<extra></extra>"
+            )
+        )
+
+        fig.add_trace(
+            go.Scatter(
+                x=df["duration_bin"],
+                y=df["smoothed_tip_pct"],
+                mode="lines",
+                name="Smoothed Trend",
+                hovertemplate="Duration bin: %{x} min<br>Smoothed Tip%: %{y:.2f}%<extra></extra>"
+            )
+        )
+
+        fig.update_layout(
+            xaxis_title="Trip Duration (minutes, binned)",
+            yaxis_title="Average Tip Percentage (%)",
+            margin=dict(l=40, r=20, t=40, b=40),
+        )
+
+        apply_exec_style(fig, title="Tip Sensitivity Curve (Tip% vs Duration)")
+        return fig
+
+    
+    # ---------------------------------------------------
+    # 8) Airport Sunburst
     # ---------------------------------------------------
     @app.callback(Output("fig-airport-analysis", "figure"), COMMON_INPUTS)
     def fig_airport_sunburst(taxi_type, year, borough, month, mode, sy, sm, ey, em):
